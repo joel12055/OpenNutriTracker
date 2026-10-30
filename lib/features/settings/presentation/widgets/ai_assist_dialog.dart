@@ -13,6 +13,7 @@ import 'package:opennutritracker/features/add_meal/domain/usecase/probe_ai_endpo
 import 'package:opennutritracker/features/add_meal/domain/usecase/run_ai_endpoint_probe_usecase.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/ai_consent_screen.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/auto_second_opinion_selector.dart';
+import 'package:opennutritracker/features/settings/presentation/widgets/web_lookup_selector.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/chatgpt_sign_in_section.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/reasoning_level_selector.dart';
 import 'package:opennutritracker/generated/l10n.dart';
@@ -1143,6 +1144,14 @@ class _AiAssistDialogState extends State<AiAssistDialog> {
                       // provider it would ask is a fact about the one in use.
                       AutoSecondOpinionSelector(
                         key: ValueKey(_provider),
+                        storage: widget.storage,
+                      ),
+                      const SizedBox(height: 16),
+                      // Not the bare provider: the selector above is keyed by
+                      // it already, and two children of one Column may not
+                      // share a key.
+                      WebLookupSelector(
+                        key: ValueKey('web-lookup-${_provider.name}'),
                         storage: widget.storage,
                       ),
                     ],

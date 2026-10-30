@@ -82,6 +82,7 @@ import 'package:http/http.dart' as http;
 import 'package:opennutritracker/core/utils/chatgpt_auth.dart';
 import 'package:opennutritracker/core/utils/chatgpt_session_store.dart';
 import 'package:opennutritracker/features/guided_meal/data/guided_tool_client.dart';
+import 'package:opennutritracker/features/guided_meal/data/guided_web_search_client.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_service.dart';
 import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
 import 'package:opennutritracker/features/add_meal/data/meal_items_api_factory.dart';
@@ -194,6 +195,10 @@ Future<void> initLocator() async {
     () => GuidedMealService(
       locator<AiCredentialStorage>(),
       GuidedToolClient(
+        locator<http.Client>(),
+        chatGpt: locator<ChatGptAuth>(),
+      ),
+      GuidedWebSearchClient(
         locator<http.Client>(),
         chatGpt: locator<ChatGptAuth>(),
       ),

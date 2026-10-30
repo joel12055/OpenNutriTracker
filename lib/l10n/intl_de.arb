@@ -1459,5 +1459,17 @@
   "@guidedMealSecondBy": {"placeholders": {"name": {"type": "String"}}},
   "guidedMealSecondFailed": "Die automatische Zweitmeinung hat nicht geklappt. Das ist die Erstschätzung.",
   "guidedMealDisclosureSecond": "Mit der automatischen Zweitmeinung gehen Foto und Antworten, wenn eine eingeholt wird, zusätzlich an {name}.",
-  "@guidedMealDisclosureSecond": {"placeholders": {"name": {"type": "String"}}}
+  "@guidedMealDisclosureSecond": {"placeholders": {"name": {"type": "String"}}},
+  "aiAssistWebLookupLabel": "Websuche für unbekannte Lebensmittel",
+  "aiAssistWebLookupNote": "Für Markenprodukte, Restaurantgerichte und andere Lebensmittel, die die KI nicht auswendig kennt, sucht eine Websuche nach den Werten, über dein ChatGPT-Abo oder sonst mit einem Gemini-Schlüssel, und deine KI wägt das Ergebnis ab. Nur kurze Suchanfragen verlassen das Handy, nie das Foto.",
+  "aiAssistWebLookupNoKey": "Dafür brauchst du die ChatGPT-Anmeldung oder einen Gemini-Schlüssel, egal welche KI du sonst benutzt.",
+  "guidedMealSearching": "Suche Nährwerte im Web …",
+  "guidedMealDisclosureWeb": "Bei eingeschalteter Websuche gehen kurze Suchanfragen für Lebensmittel, die die KI nicht kennt, an {name}. Das Foto nicht.",
+  "@guidedMealDisclosureWeb": {"placeholders": {"name": {"type": "String"}}},
+  "guidedMealWebHeading": "Im Web nachgeschlagen",
+  "guidedMealWebQueries": "Gesucht nach: {queries}",
+  "@guidedMealWebQueries": {"placeholders": {"queries": {"type": "String"}}},
+  "guidedMealWebSources": "Quellen: {sources}",
+  "@guidedMealWebSources": {"placeholders": {"sources": {"type": "String"}}},
+  "guidedMealWebFailed": "Die Websuche hat nicht geklappt. Das ist die Schätzung ohne sie."
 }

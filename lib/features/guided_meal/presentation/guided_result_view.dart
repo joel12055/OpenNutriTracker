@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import 'package:opennutritracker/features/add_meal/domain/meal_photo_interpreter.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_schemas.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_web_research.dart';
 import 'package:opennutritracker/generated/l10n.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -37,6 +38,12 @@ class GuidedResultView extends StatefulWidget {
   /// A second opinion was due and did not come.
   final bool secondOpinionFailed;
 
+  /// What the web search looked up and where, when it ran.
+  final GuidedWebResearch? web;
+
+  /// Foods were to be looked up on the web and the search did not come.
+  final bool webFailed;
+
   const GuidedResultView({
     super.key,
     required this.estimate,
@@ -47,6 +54,8 @@ class GuidedResultView extends StatefulWidget {
     this.verdict,
     this.secondOpinionBy,
     this.secondOpinionFailed = false,
+    this.web,
+    this.webFailed = false,
   });
 
   @override
@@ -68,6 +77,46 @@ class _GuidedResultViewState extends State<GuidedResultView> {
       // Best effort: the OS clears the cache directory in the end.
     }
     super.dispose();
+  }
+
+  /// Where the web figures came from: what was searched for and which sites
+  /// the search leaned on. Plain text, not links: Google hands out redirect
+  /// addresses, and the site's name is what tells a person whether to trust it.
+  Widget _buildWebCard(S s, ThemeData theme, GuidedWebResearch web) {
+    final color = theme.colorScheme.onSurfaceVariant;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              s.guidedMealWebHeading,
+              style: theme.textTheme.labelLarge?.copyWith(color: color),
+            ),
+            if (web.queries.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  s.guidedMealWebQueries(web.queries.join(' · ')),
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                ),
+              ),
+            if (web.sources.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  s.guidedMealWebSources(
+                    web.sources.map((source) => source.title).join(', '),
+                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _confidenceLabel(S s, GuidedConfidence confidence) =>
@@ -150,6 +199,17 @@ class _GuidedResultViewState extends State<GuidedResultView> {
                     ),
                   ),
                 ),
+              if (widget.webFailed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    s.guidedMealWebFailed,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+              if (widget.web != null) _buildWebCard(s, theme, widget.web!),
               // After a decision the banner would invite a second opinion the
               // person has just had.
               if (estimate.isUncertain && widget.verdict == null)

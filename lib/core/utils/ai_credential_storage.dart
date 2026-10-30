@@ -290,6 +290,7 @@ class AiCredentialStorage {
   static const _termsAcceptedTag = 'AiTermsAcceptedTag';
   static const _reasoningTag = 'AiReasoningLevelTag';
   static const _autoSecondTag = 'AiAutoSecondOpinionTag';
+  static const _webLookupTag = 'AiWebLookupTag';
   static const _providerTag = 'AiProviderTag';
   static const _modelTag = 'AiModelTag';
 
@@ -1109,6 +1110,7 @@ class AiCredentialStorage {
     await _storage.delete(key: _termsAcceptedTag);
     await _storage.delete(key: _reasoningTag);
     await _storage.delete(key: _autoSecondTag);
+    await _storage.delete(key: _webLookupTag);
   });
 
   /// The legacy tag is the Anthropic slot under an older name, so it is
@@ -1222,6 +1224,22 @@ class AiCredentialStorage {
       await _storage.write(key: _autoSecondTag, value: mode);
     } else {
       await _storage.delete(key: _autoSecondTag);
+    }
+  }
+
+  /// Whether the guided flow looks up foods the model cannot know on the web:
+  /// `on` or `off` (the default). Off by default because it sends the model's
+  /// search queries to Google, which only the person's own choice may do.
+  Future<String> readWebLookup() async {
+    final value = await _storage.read(key: _webLookupTag);
+    return value == 'on' ? 'on' : 'off';
+  }
+
+  Future<void> writeWebLookup(bool on) async {
+    if (on) {
+      await _storage.write(key: _webLookupTag, value: 'on');
+    } else {
+      await _storage.delete(key: _webLookupTag);
     }
   }
 

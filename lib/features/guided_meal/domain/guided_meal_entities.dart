@@ -111,6 +111,12 @@ class GuidedEstimateItem {
   /// One short sentence on what makes this item uncertain, when it is.
   final String? doubt;
 
+  /// A web search that would find this food's nutrition facts, written by the
+  /// model for foods it cannot know by heart (a brand product, a restaurant
+  /// dish). Only asked for, and only used, when the person switched the web
+  /// search on.
+  final String? lookupQuery;
+
   const GuidedEstimateItem({
     required this.name,
     required this.grams,
@@ -118,6 +124,7 @@ class GuidedEstimateItem {
     this.fallbackNutrition,
     this.confidence = GuidedConfidence.medium,
     this.doubt,
+    this.lookupQuery,
   });
 
   /// Energy of the portion by the model's own figures, or null without them.

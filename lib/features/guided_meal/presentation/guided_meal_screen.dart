@@ -57,6 +57,8 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
       locator<GuidedMealService>().destination();
   late final Future<({AutoSecondOpinion mode, String? name})> _plan =
       locator<GuidedMealService>().secondOpinionPlan();
+  late final Future<String?> _webLookup = locator<GuidedMealService>()
+      .webLookupDestination();
 
   @override
   void dispose() {
@@ -132,6 +134,8 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
       verdict: state.verdict,
       secondOpinionBy: state.secondOpinionBy,
       secondOpinionFailed: state.secondOpinionFailed,
+      web: state.web,
+      webFailed: state.webFailed,
       photo: cubit.photo,
       onSubmitSecondOpinion: (text) => cubit.decide(
         secondOpinion: text,
@@ -242,6 +246,21 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
                 );
               },
             ),
+            // Likewise for the search queries that go to Google.
+            FutureBuilder<String?>(
+              future: _webLookup,
+              builder: (context, snapshot) {
+                final name = snapshot.data;
+                if (name == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    s.guidedMealDisclosureWeb(name),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 16),
             Semantics(
               identifier: 'guided-meal-start',
@@ -295,6 +314,7 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
             Text(switch (state.step) {
               GuidedStep.analyzing => s.guidedMealAnalyzing,
               GuidedStep.estimating => s.guidedMealEstimating,
+              GuidedStep.searching => s.guidedMealSearching,
               GuidedStep.reviewing => s.guidedMealReviewing(state.detail ?? ''),
               GuidedStep.deciding => s.guidedMealDeciding,
             }, textAlign: TextAlign.center),
@@ -488,8 +508,9 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
                     unknownLabel: s.guidedMealUnknownOption,
                     localeCode: _localeCode,
                   ),
-                  // Never failed: a second opinion that does not come ends
-                  // in the first estimate, not in this screen.
+                  // Never failed: a search or a second opinion that does not
+                  // come ends in the first estimate, not in this screen.
+                  GuidedStep.searching ||
                   GuidedStep.reviewing => cubit.dismissFailure(),
                   GuidedStep.deciding => cubit.retryDecision(
                     unknownLabel: s.guidedMealUnknownOption,

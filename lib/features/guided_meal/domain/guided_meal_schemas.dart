@@ -1,5 +1,6 @@
 import 'package:opennutritracker/features/add_meal/domain/meal_interpreter_exception.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_web_research.dart';
 
 /// The two tool contracts of the guided flow.
 ///
@@ -100,6 +101,13 @@ const estimateMealSchema = {
             'description':
                 'Only for medium or low: one short sentence on what is '
                 'uncertain, in the user\'s language.',
+          },
+          'lookup_query': {
+            'type': 'string',
+            'description':
+                'Only when the prompt asks for web lookups: a short web '
+                'search query that would find this food\'s nutrition facts '
+                'per 100 g. Leave it out otherwise.',
           },
           'kcal_per_100g': {'type': 'number'},
           'protein_per_100g': {'type': 'number'},
@@ -242,6 +250,7 @@ GuidedEstimateItem? _estimateItemFrom(Object? entry) {
     fallbackNutrition: _nutritionFrom(entry),
     confidence: GuidedConfidence.fromTag(entry['confidence']),
     doubt: doubt is String && doubt.trim().isNotEmpty ? doubt.trim() : null,
+    lookupQuery: cleanLookupQuery(entry['lookup_query']),
   );
 }
 

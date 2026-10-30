@@ -1537,5 +1537,17 @@
   "@guidedMealSecondBy": {"placeholders": {"name": {"type": "String"}}},
   "guidedMealSecondFailed": "The automatic second opinion did not work out. This is the first estimate.",
   "guidedMealDisclosureSecond": "With the automatic second opinion, photo and answers also go to {name} when one is fetched.",
-  "@guidedMealDisclosureSecond": {"placeholders": {"name": {"type": "String"}}}
+  "@guidedMealDisclosureSecond": {"placeholders": {"name": {"type": "String"}}},
+  "aiAssistWebLookupLabel": "Web search for unknown foods",
+  "aiAssistWebLookupNote": "For brand products, restaurant dishes and other foods the AI cannot know by heart, a web search looks the figures up, through your ChatGPT plan or else with a Gemini key, and your AI weighs what it finds. Only short search queries leave the phone, never the photo.",
+  "aiAssistWebLookupNoKey": "Needs the ChatGPT sign-in or a Gemini key, whichever AI you use for the rest.",
+  "guidedMealSearching": "Looking up nutrition facts on the web …",
+  "guidedMealDisclosureWeb": "With the web search on, short search queries for foods the AI cannot know go to {name}. The photo does not.",
+  "@guidedMealDisclosureWeb": {"placeholders": {"name": {"type": "String"}}},
+  "guidedMealWebHeading": "Looked up on the web",
+  "guidedMealWebQueries": "Searched for: {queries}",
+  "@guidedMealWebQueries": {"placeholders": {"queries": {"type": "String"}}},
+  "guidedMealWebSources": "Sources: {sources}",
+  "@guidedMealWebSources": {"placeholders": {"sources": {"type": "String"}}},
+  "guidedMealWebFailed": "The web search did not work out. This is the estimate without it."
 }

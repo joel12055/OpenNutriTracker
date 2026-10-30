@@ -157,7 +157,7 @@ class GuidedToolClient {
         return reply;
       } on MealInterpreterException catch (e) {
         final last = i == candidates.length - 1;
-        if (last || !_isOverload(e)) rethrow;
+        if (last || !isOverload(e)) rethrow;
         _log.info(
           '${candidates[i]} unavailable (${e.statusCode ?? e.failure.name}), '
           'trying ${candidates[i + 1]}',
@@ -170,7 +170,7 @@ class GuidedToolClient {
 
   /// A server-side hiccup, a spent quota or silence on this model, which
   /// another model of the same provider may well not share.
-  static bool _isOverload(MealInterpreterException e) =>
+  static bool isOverload(MealInterpreterException e) =>
       e.failure == MealInterpreterFailure.timeout ||
       switch (e.statusCode) {
         429 || 500 || 502 || 503 || 504 => true,
@@ -274,7 +274,7 @@ class GuidedToolClient {
         },
       ],
     });
-    final decoded = await _post(
+    final decoded = await post(
       client: _client,
       uri: Uri.parse(_anthropicEndpoint),
       headers: {
@@ -337,7 +337,7 @@ class GuidedToolClient {
       'store': false,
       'max_output_tokens': request.maxTokens,
     });
-    final decoded = await _post(
+    final decoded = await post(
       client: _client,
       uri: Uri.parse(_openAiEndpoint),
       headers: {'authorization': 'Bearer ${selection.apiKey ?? ''}'},
@@ -464,11 +464,11 @@ class GuidedToolClient {
       );
       _log.warning(
         'Guided call failed with ${response.statusCode}'
-        '${_providerMessage(text)}',
+        '${providerMessage(text)}',
       );
       throw MealInterpreterException(
         'provider returned ${response.statusCode}',
-        failure: _failureFor(response.statusCode, text),
+        failure: failureFor(response.statusCode, text),
         statusCode: response.statusCode,
       );
     }
@@ -523,7 +523,7 @@ class GuidedToolClient {
           if (arguments == null) throw _noToolCall();
           return arguments;
         case 'response.failed' || 'error':
-          throw _streamFailure(event);
+          throw streamFailure(event);
         case 'response.incomplete':
           throw const MealInterpreterException('response incomplete');
       }
@@ -547,7 +547,7 @@ class GuidedToolClient {
 
   /// An error that arrives inside the stream, after the 200. The plan's
   /// allowance running out is the one the person can do something about.
-  static MealInterpreterException _streamFailure(Map event) {
+  static MealInterpreterException streamFailure(Map event) {
     final response = event['response'];
     final error =
         (response is Map ? response['error'] : null) ?? event['error'];
@@ -611,7 +611,7 @@ class GuidedToolClient {
       'tool_choice': toolChoice,
       'provider': ?routing,
     });
-    final decoded = await _post(
+    final decoded = await post(
       client: client,
       uri: uri,
       headers: {
@@ -639,7 +639,7 @@ class GuidedToolClient {
     throw _noToolCall();
   }
 
-  static Future<Map<String, dynamic>> _post({
+  static Future<Map<String, dynamic>> post({
     required http.Client client,
     required Uri uri,
     required Map<String, String> headers,
@@ -687,11 +687,11 @@ class GuidedToolClient {
       // The provider's own words for what went wrong, never the request.
       _log.warning(
         'Guided call failed with ${response.statusCode}'
-        '${_providerMessage(response.body)}',
+        '${providerMessage(response.body)}',
       );
       throw MealInterpreterException(
         'provider returned ${response.statusCode}',
-        failure: _failureFor(response.statusCode, response.body),
+        failure: failureFor(response.statusCode, response.body),
         statusCode: response.statusCode,
       );
     }
@@ -706,7 +706,7 @@ class GuidedToolClient {
   /// `": message"` from an error body shaped `{"error": {"message": …}}`, or
   /// the same inside a one-element list as Google sometimes sends it. Empty
   /// when there is none, and cut short: it goes to a log.
-  static String _providerMessage(String body) {
+  static String providerMessage(String body) {
     try {
       var decoded = jsonDecode(body);
       if (decoded is List && decoded.isNotEmpty) decoded = decoded.first;
@@ -719,7 +719,7 @@ class GuidedToolClient {
     }
   }
 
-  static MealInterpreterFailure _failureFor(int statusCode, String body) =>
+  static MealInterpreterFailure failureFor(int statusCode, String body) =>
       switch (statusCode) {
         401 || 403 => MealInterpreterFailure.auth,
         // Google answers a wrong key with 400, not 401.

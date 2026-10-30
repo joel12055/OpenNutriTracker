@@ -2,11 +2,13 @@ import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
 import 'package:opennutritracker/core/utils/ai_model_catalogue.dart';
 import 'package:opennutritracker/features/add_meal/domain/meal_photo_interpreter.dart';
 import 'package:opennutritracker/features/guided_meal/data/guided_tool_client.dart';
+import 'package:opennutritracker/features/guided_meal/data/guided_web_search_client.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_prompts.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_schemas.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_review.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_second_provider.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_web_research.dart';
 
 /// No provider is configured, or the feature is switched off.
 class GuidedUnavailableException implements Exception {
@@ -51,9 +53,9 @@ class GuidedProbeResult {
   });
 }
 
-/// The two model calls of the guided flow.
+/// The model calls of the guided flow.
 ///
-/// Both are stateless: the estimate call sends the photo again together with
+/// All are stateless: the estimate call sends the photo again together with
 /// the questions and the answers, so no conversation is kept anywhere and the
 /// photo is still never written to disk.
 ///
@@ -63,7 +65,61 @@ class GuidedMealService {
   final AiCredentialStorage _credentials;
   final GuidedToolClient _client;
 
-  GuidedMealService(this._credentials, this._client);
+  /// Null where the web search does not exist at all, as in the tests that
+  /// are not about it.
+  final GuidedWebSearchClient? _web;
+
+  GuidedMealService(this._credentials, this._client, [this._web]);
+
+  /// How the web search would be run: through the person's ChatGPT plan, which
+  /// costs nothing more, else on a Gemini key. Whichever provider is in use for
+  /// the rest. Null when neither is usable.
+  Future<_WebRoute?> _webRoute() async {
+    if (_web == null) return null;
+    final model = (await _credentials.selectionFor(
+      AiProvider.chatgpt,
+    ))?.modelId;
+    if (model != null && model.isNotEmpty) return _WebRoute.chatGpt(model);
+    final key = (await _credentials.selectionFor(AiProvider.gemini))?.apiKey;
+    if (key != null && key.isNotEmpty) return _WebRoute.gemini(key);
+    return null;
+  }
+
+  /// Whether the person switched the web search on and there is a way to run
+  /// it.
+  Future<bool> webLookupAvailable() async =>
+      await _credentials.readWebLookup() == 'on' && await _webRoute() != null;
+
+  /// The company that would get the search queries, or null when the web
+  /// search is off or cannot be run. For the screen that has to say where the
+  /// queries go.
+  Future<String?> webLookupDestination() async {
+    if (await _credentials.readWebLookup() != 'on') return null;
+    final route = await _webRoute();
+    if (route == null) return null;
+    return route.isChatGpt ? 'OpenAI' : 'Google';
+  }
+
+  /// The foods of [estimate] to look up: none unless the web search is
+  /// available.
+  Future<List<GuidedWebLookup>> webLookupsFor(GuidedEstimate estimate) async {
+    final lookups = guidedWebLookups(estimate);
+    if (lookups.isEmpty || !await webLookupAvailable()) return const [];
+    return lookups;
+  }
+
+  /// Searches the web for [lookups]. Only their names and the model's search
+  /// queries leave the phone, never the photo.
+  Future<GuidedWebResearch> research(List<GuidedWebLookup> lookups) async {
+    final web = _web;
+    final route = await _webRoute();
+    if (web == null || route == null) throw const GuidedUnavailableException();
+    return route.run(
+      web,
+      system: guidedWebSearchSystemPrompt,
+      text: guidedWebSearchUserText(lookups),
+    );
+  }
 
   /// Where a photo would go, and the name to call it — the same answer the
   /// single-photo reader gives, because both must name the same destination.
@@ -146,10 +202,14 @@ class GuidedMealService {
   }) async {
     final selection = await _selection();
     final reasoning = await _reasoning('high');
+    final webLookup = await webLookupAvailable();
     final reply = await _client.call(
       selection,
       GuidedToolRequest(
-        system: guidedEstimatePrompt(localeCode: localeCode),
+        system: guidedEstimatePrompt(
+          localeCode: localeCode,
+          webLookup: webLookup,
+        ),
         text: guidedEstimateUserText(
           note: note,
           summary: analysis.summary,
@@ -177,6 +237,9 @@ class GuidedMealService {
   /// call keeps a conversation. The pasted text is capped and sanitised in
   /// the prompt builder, and the reply is read by the same parser rules as
   /// any estimate plus a verdict.
+  ///
+  /// [secondOpinion] may be empty when [webResearch], what a web search found,
+  /// is what the decision weighs.
   Future<GuidedDecision> decide({
     required MealPhoto photo,
     required GuidedAnalysis analysis,
@@ -184,6 +247,7 @@ class GuidedMealService {
     required GuidedEstimate estimate,
     required String secondOpinion,
     required String unknownLabel,
+    String webResearch = '',
     String? note,
     String? localeCode,
   }) async {
@@ -192,7 +256,11 @@ class GuidedMealService {
     final reply = await _client.call(
       selection,
       GuidedToolRequest(
-        system: guidedDecisionPrompt(localeCode: localeCode),
+        system: guidedDecisionPrompt(
+          localeCode: localeCode,
+          secondOpinion: secondOpinion.trim().isNotEmpty,
+          webResearch: webResearch.trim().isNotEmpty,
+        ),
         text: guidedDecisionUserText(
           note: note,
           summary: analysis.summary,
@@ -201,6 +269,7 @@ class GuidedMealService {
           unknownLabel: unknownLabel,
           estimate: estimate,
           secondOpinion: secondOpinion,
+          webResearch: webResearch,
         ),
         photo: photo,
         toolName: decideMealToolName,
@@ -272,15 +341,71 @@ class GuidedMealService {
   /// For telling a dead connection from a bad key from a model that is down
   /// or silent, without anyone reading logs. Runs the models side by side, so
   /// the test lasts as long as the slowest wait rather than their sum.
+  ///
+  /// With the web search on, the models that search are asked too, with the
+  /// search tool: a working connection says nothing about the tool.
   Future<List<GuidedProbeResult>> testConnection() async {
     final selection = await _selection();
     final models = _client.modelsFor(selection);
-    return Future.wait(models.map((model) => _probe(selection, model)));
+    final web = _web;
+    final route = web != null && await webLookupAvailable()
+        ? await _webRoute()
+        : null;
+    return Future.wait([
+      ...models.map((model) => _probe(selection, model)),
+      if (web != null && route != null)
+        for (final model in route.models)
+          _probeCall(
+            '$model + web',
+            () => route.run(
+              web,
+              system: 'Answer in one short sentence. Use web search.',
+              text: 'How many kcal per 100 g does a raw banana have?',
+              onlyModel: model,
+              timeout: _webProbeTimeout,
+            ),
+          ),
+    ]);
   }
 
   static const _probeTimeout = Duration(seconds: 20);
 
-  Future<GuidedProbeResult> _probe(AiSelection selection, String model) async {
+  /// A search reads pages before it answers, so it is given longer than a
+  /// question that is answered from the model alone.
+  static const _webProbeTimeout = Duration(seconds: 60);
+
+  Future<GuidedProbeResult> _probe(AiSelection selection, String model) =>
+      _probeCall(model, () async {
+        await _client.call(
+          selection,
+          const GuidedToolRequest(
+            system: 'Answer by calling the tool.',
+            text: 'ping',
+            toolName: 'ping',
+            toolDescription: 'Confirm that you are reachable.',
+            schema: {
+              'type': 'object',
+              'properties': {
+                'ok': {'type': 'boolean'},
+              },
+              'required': ['ok'],
+            },
+            maxTokens: 256,
+            timeout: _probeTimeout,
+          ),
+          onlyModel: model,
+        );
+      }, replyWithoutToolIsFine: true);
+
+  /// Runs [call] and says how it ended. A reply with no tool call in it still
+  /// came from a model, so for the tool probe ([replyWithoutToolIsFine]) it
+  /// counts as a working connection; for the search, a reply with no text does
+  /// not.
+  Future<GuidedProbeResult> _probeCall(
+    String model,
+    Future<void> Function() call, {
+    bool replyWithoutToolIsFine = false,
+  }) async {
     final stopwatch = Stopwatch()..start();
     GuidedProbeResult result(GuidedProbeOutcome outcome, {int? status}) =>
         GuidedProbeResult(
@@ -290,31 +415,15 @@ class GuidedMealService {
           statusCode: status,
         );
     try {
-      await _client.call(
-        selection,
-        const GuidedToolRequest(
-          system: 'Answer by calling the tool.',
-          text: 'ping',
-          toolName: 'ping',
-          toolDescription: 'Confirm that you are reachable.',
-          schema: {
-            'type': 'object',
-            'properties': {
-              'ok': {'type': 'boolean'},
-            },
-            'required': ['ok'],
-          },
-          maxTokens: 256,
-          timeout: _probeTimeout,
-        ),
-        onlyModel: model,
-      );
+      await call();
       return result(GuidedProbeOutcome.ok);
     } on MealInterpreterException catch (e) {
       final status = e.statusCode;
       // A reply with no tool call in it still came from the model: the
       // connection, the key and the model all work.
-      if (status == null && e.failure == MealInterpreterFailure.unsupported) {
+      if (replyWithoutToolIsFine &&
+          status == null &&
+          e.failure == MealInterpreterFailure.unsupported) {
         return result(GuidedProbeOutcome.ok);
       }
       final outcome = switch (e.failure) {
@@ -332,5 +441,54 @@ class GuidedMealService {
     } catch (_) {
       return result(GuidedProbeOutcome.other);
     }
+  }
+}
+
+/// How a web search is run: through the ChatGPT plan with the model the person
+/// picked there, or on a Gemini key.
+class _WebRoute {
+  final String? _chatGptModel;
+  final String? _geminiKey;
+
+  const _WebRoute.chatGpt(String model)
+    : _chatGptModel = model,
+      _geminiKey = null;
+
+  const _WebRoute.gemini(String key)
+    : _geminiKey = key,
+      _chatGptModel = null;
+
+  bool get isChatGpt => _chatGptModel != null;
+
+  /// The models a connection test asks: the one model of the plan, or both
+  /// Gemini models, each of which can be missing for a different reason.
+  List<String> get models {
+    final model = _chatGptModel;
+    return model != null ? [model] : GuidedWebSearchClient.models;
+  }
+
+  Future<GuidedWebResearch> run(
+    GuidedWebSearchClient client, {
+    required String system,
+    required String text,
+    String? onlyModel,
+    Duration? timeout,
+  }) {
+    final model = _chatGptModel;
+    if (model != null) {
+      return client.searchWithChatGpt(
+        modelId: model,
+        system: system,
+        text: text,
+        timeoutOverride: timeout,
+      );
+    }
+    return client.search(
+      apiKey: _geminiKey!,
+      system: system,
+      text: text,
+      onlyModel: onlyModel,
+      timeoutOverride: timeout,
+    );
   }
 }

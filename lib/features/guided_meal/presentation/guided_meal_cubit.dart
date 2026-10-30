@@ -8,9 +8,13 @@ import 'package:opennutritracker/features/guided_meal/domain/guided_meal_service
 import 'package:opennutritracker/features/guided_meal/domain/guided_review.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_second_provider.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_second_opinion_prompt.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_web_research.dart';
 
-/// Which of the two model calls a busy or failed state is about.
-enum GuidedStep { analyzing, estimating, reviewing, deciding }
+/// Which of the flow's calls a busy or failed state is about.
+///
+/// [searching] is never a failed state: a web search that does not come ends
+/// in the estimate without it, with a note.
+enum GuidedStep { analyzing, estimating, searching, reviewing, deciding }
 
 sealed class GuidedMealState extends Equatable {
   const GuidedMealState();
@@ -100,11 +104,20 @@ class GuidedDoneState extends GuidedMealState {
   /// A second opinion was due and did not come; [estimate] is the first one.
   final bool secondOpinionFailed;
 
+  /// What the web search found and weighed into [estimate], if it ran.
+  final GuidedWebResearch? web;
+
+  /// The model asked for foods to be looked up on the web and the search did
+  /// not come; [estimate] is the one without it.
+  final bool webFailed;
+
   const GuidedDoneState(
     this.estimate, {
     this.verdict,
     this.secondOpinionBy,
     this.secondOpinionFailed = false,
+    this.web,
+    this.webFailed = false,
   });
 
   @override
@@ -113,6 +126,8 @@ class GuidedDoneState extends GuidedMealState {
     verdict,
     secondOpinionBy,
     secondOpinionFailed,
+    web?.text,
+    webFailed,
   ];
 }
 
@@ -136,6 +151,10 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
   /// failed decision can go back to them.
   GuidedEstimate? _estimate;
   String? _verdict;
+
+  /// What the web search found for the estimate on screen, kept so a second
+  /// opinion pasted in later is weighed together with it.
+  GuidedWebResearch? _web;
 
   /// The pasted text of the last decision, for trying it again.
   String _secondOpinion = '';
@@ -198,6 +217,7 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
       _answers = const {};
       _estimate = null;
       _verdict = null;
+      _web = null;
       emit(GuidedQuestionsState(analysis, _answers));
     } catch (e, stackTrace) {
       _fail(e, stackTrace, GuidedStep.analyzing, attempt);
@@ -252,6 +272,7 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
     if (isClosed || attempt != _attempt) return;
     _estimate = estimate;
     _verdict = null;
+    _web = null;
     await _afterEstimate(
       estimate,
       attempt,
@@ -263,12 +284,13 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
   }
 
   /// Ends the estimate step: either the result as it is, or — when the person
-  /// turned the automatic second opinion on and this estimate calls for one —
-  /// a second assistant checks it and the first weighs the two.
+  /// turned on the web search and the model asked for foods to be looked up,
+  /// and/or the automatic second opinion and this estimate calls for one —
+  /// the findings are weighed by the model that made the estimate.
   ///
   /// Never fails the flow. The estimate the person already has is worth more
-  /// than a second opinion that did not come, so any trouble here ends in that
-  /// estimate with a note, not in an error screen.
+  /// than a search or a second opinion that did not come, so any trouble here
+  /// ends in that estimate with a note, not in an error screen.
   Future<void> _afterEstimate(
     GuidedEstimate estimate,
     int attempt, {
@@ -277,6 +299,24 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
     required String unknownLabel,
     String? localeCode,
   }) async {
+    // The web search comes first: what it finds is one more thing the decision
+    // weighs, next to the second opinion.
+    GuidedWebResearch? web;
+    var webFailed = false;
+    try {
+      final lookups = await _service.webLookupsFor(estimate);
+      if (lookups.isNotEmpty) {
+        if (isClosed || attempt != _attempt) return;
+        emit(const GuidedBusyState(GuidedStep.searching));
+        web = await _service.research(lookups);
+      }
+    } catch (e) {
+      _log.info('Web search failed: ${e.runtimeType}');
+      webFailed = true;
+    }
+    if (isClosed || attempt != _attempt) return;
+    _web = web;
+
     GuidedSecondary? secondary;
     try {
       final mode = await _service.autoSecondOpinion();
@@ -290,33 +330,58 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
       );
     }
     if (isClosed || attempt != _attempt) return;
-    if (secondary == null) {
-      emit(GuidedDoneState(estimate));
+    if (secondary == null && web == null) {
+      emit(GuidedDoneState(estimate, webFailed: webFailed));
       return;
     }
 
-    emit(GuidedBusyState(GuidedStep.reviewing, detail: secondary.name));
-    try {
-      final review = await _service.review(
-        secondary: secondary,
-        photo: photo,
-        analysis: analysis,
-        answers: _answers,
-        estimate: estimate,
-        unknownLabel: unknownLabel,
-        note: _note,
-        localeCode: localeCode,
-      );
+    var secondOpinion = '';
+    if (secondary != null) {
+      emit(GuidedBusyState(GuidedStep.reviewing, detail: secondary.name));
+      try {
+        final review = await _service.review(
+          secondary: secondary,
+          photo: photo,
+          analysis: analysis,
+          answers: _answers,
+          estimate: estimate,
+          unknownLabel: unknownLabel,
+          note: _note,
+          localeCode: localeCode,
+        );
+        secondOpinion = guidedReviewAsSecondOpinion(
+          providerName: secondary.name,
+          review: review,
+        );
+      } catch (e) {
+        if (isClosed || attempt != _attempt) return;
+        _log.info('Automatic second opinion failed: ${e.runtimeType}');
+      }
       if (isClosed || attempt != _attempt) return;
+      // Nothing to weigh: the review did not come and there is no web search.
+      if (secondOpinion.isEmpty && web == null) {
+        emit(
+          GuidedDoneState(
+            estimate,
+            secondOpinionFailed: true,
+            webFailed: webFailed,
+          ),
+        );
+        return;
+      }
+    }
+    // With a second opinion the review step has been showing; for web findings
+    // alone the decision has its own.
+    if (secondary == null) emit(const GuidedBusyState(GuidedStep.deciding));
+
+    try {
       final decision = await _service.decide(
         photo: photo,
         analysis: analysis,
         answers: _answers,
         estimate: estimate,
-        secondOpinion: guidedReviewAsSecondOpinion(
-          providerName: secondary.name,
-          review: review,
-        ),
+        secondOpinion: secondOpinion,
+        webResearch: web?.text ?? '',
         unknownLabel: unknownLabel,
         note: _note,
         localeCode: localeCode,
@@ -328,13 +393,23 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
         GuidedDoneState(
           decision.estimate,
           verdict: _verdict,
-          secondOpinionBy: secondary.name,
+          secondOpinionBy: secondOpinion.isEmpty ? null : secondary?.name,
+          secondOpinionFailed: secondary != null && secondOpinion.isEmpty,
+          web: web,
+          webFailed: webFailed,
         ),
       );
     } catch (e) {
       if (isClosed || attempt != _attempt) return;
-      _log.info('Automatic second opinion failed: ${e.runtimeType}');
-      emit(GuidedDoneState(estimate, secondOpinionFailed: true));
+      _log.info('Weighing the findings failed: ${e.runtimeType}');
+      _web = null;
+      emit(
+        GuidedDoneState(
+          estimate,
+          secondOpinionFailed: secondary != null,
+          webFailed: webFailed || web != null,
+        ),
+      );
     }
   }
 
@@ -359,6 +434,8 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
         answers: _answers,
         estimate: estimate,
         secondOpinion: secondOpinion,
+        // What the web search found for this estimate still counts.
+        webResearch: _web?.text ?? '',
         unknownLabel: unknownLabel,
         note: _note,
         localeCode: localeCode,
@@ -366,7 +443,7 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
       if (isClosed || attempt != _attempt) return;
       _estimate = decision.estimate;
       _verdict = decision.verdict.isEmpty ? null : decision.verdict;
-      emit(GuidedDoneState(decision.estimate, verdict: _verdict));
+      emit(GuidedDoneState(decision.estimate, verdict: _verdict, web: _web));
     } catch (e, stackTrace) {
       _fail(e, stackTrace, GuidedStep.deciding, attempt);
     }
@@ -390,7 +467,7 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
     final analysis = _analysis;
     final estimate = _estimate;
     if (estimate != null) {
-      emit(GuidedDoneState(estimate, verdict: _verdict));
+      emit(GuidedDoneState(estimate, verdict: _verdict, web: _web));
     } else if (analysis != null) {
       emit(GuidedQuestionsState(analysis, _answers));
     } else {
@@ -409,6 +486,7 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
     _answers = const {};
     _estimate = null;
     _verdict = null;
+    _web = null;
     emit(GuidedInputState(photo: _photo, note: _note));
   }
 

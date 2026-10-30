@@ -15,6 +15,8 @@ import 'package:opennutritracker/core/utils/ai_model_list_api.dart';
 import 'package:opennutritracker/features/add_meal/domain/usecase/probe_ai_endpoint_usecase.dart';
 import 'package:opennutritracker/features/add_meal/domain/usecase/run_ai_endpoint_probe_usecase.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/ai_assist_dialog.dart';
+import 'package:opennutritracker/features/settings/presentation/widgets/auto_second_opinion_selector.dart';
+import 'package:opennutritracker/features/settings/presentation/widgets/web_lookup_selector.dart';
 import 'package:opennutritracker/generated/l10n.dart';
 
 import '../../../helpers/test_l10n.dart';
@@ -299,6 +301,30 @@ void main() {
     expect(await storage.activeProvider(), AiProvider.openrouter);
     expect(
       find.textContaining(l10nEn.aiAssistDisclosureOpenRouter),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Gemini in use: the extra settings sit in one column without '
+      'sharing a key', (tester) async {
+    // The thinking level, the automatic second opinion and the web search are
+    // children of one Column, and the last two are keyed by the provider. The
+    // dialog tests all ran with a provider that shows none of the three, so
+    // two equal keys went unnoticed until a phone built the Column.
+    backing.store['AiProviderTag'] = 'gemini';
+    backing.store['AiApiKeyTag.gemini'] = 'k';
+    backing.store['AiAssistEnabledTag'] = 'true';
+
+    await tester.pumpWidget(_app(storage));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byType(AutoSecondOpinionSelector, skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.byType(WebLookupSelector, skipOffstage: false),
       findsOneWidget,
     );
   });
