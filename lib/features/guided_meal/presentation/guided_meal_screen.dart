@@ -9,6 +9,7 @@ import 'package:opennutritracker/features/add_meal/presentation/bloc/bulk_add_bl
 import 'package:opennutritracker/features/add_meal/util/meal_photo_encoder.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_service.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_second_provider.dart';
 import 'package:opennutritracker/features/guided_meal/presentation/guided_connection_test_dialog.dart';
 import 'package:opennutritracker/features/guided_meal/presentation/guided_meal_cubit.dart';
 import 'package:opennutritracker/features/guided_meal/presentation/guided_result_view.dart';
@@ -54,6 +55,8 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
   final _noteController = TextEditingController();
   late final Future<GuidedDestination?> _destination =
       locator<GuidedMealService>().destination();
+  late final Future<({AutoSecondOpinion mode, String? name})> _plan =
+      locator<GuidedMealService>().secondOpinionPlan();
 
   @override
   void dispose() {
@@ -127,6 +130,8 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
     return GuidedResultView(
       estimate: state.estimate,
       verdict: state.verdict,
+      secondOpinionBy: state.secondOpinionBy,
+      secondOpinionFailed: state.secondOpinionFailed,
       photo: cubit.photo,
       onSubmitSecondOpinion: (text) => cubit.decide(
         secondOpinion: text,
@@ -220,6 +225,23 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
               '${s.guidedMealDisclosureTwice}',
               style: theme.textTheme.bodySmall,
             ),
+            // The photo going to a second company is something the person
+            // switched on, and the place they start a meal is where they
+            // should be reminded of it.
+            FutureBuilder<({AutoSecondOpinion mode, String? name})>(
+              future: _plan,
+              builder: (context, snapshot) {
+                final name = snapshot.data?.name;
+                if (name == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    s.guidedMealDisclosureSecond(name),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 16),
             Semantics(
               identifier: 'guided-meal-start',
@@ -273,6 +295,7 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
             Text(switch (state.step) {
               GuidedStep.analyzing => s.guidedMealAnalyzing,
               GuidedStep.estimating => s.guidedMealEstimating,
+              GuidedStep.reviewing => s.guidedMealReviewing(state.detail ?? ''),
               GuidedStep.deciding => s.guidedMealDeciding,
             }, textAlign: TextAlign.center),
             const SizedBox(height: 16),
@@ -465,6 +488,9 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
                     unknownLabel: s.guidedMealUnknownOption,
                     localeCode: _localeCode,
                   ),
+                  // Never failed: a second opinion that does not come ends
+                  // in the first estimate, not in this screen.
+                  GuidedStep.reviewing => cubit.dismissFailure(),
                   GuidedStep.deciding => cubit.retryDecision(
                     unknownLabel: s.guidedMealUnknownOption,
                     localeCode: _localeCode,

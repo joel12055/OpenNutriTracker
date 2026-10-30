@@ -5,10 +5,12 @@ import 'package:opennutritracker/features/add_meal/domain/meal_photo_interpreter
 import 'package:opennutritracker/features/add_meal/presentation/bloc/bulk_add_bloc.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_service.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_review.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_second_provider.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_second_opinion_prompt.dart';
 
 /// Which of the two model calls a busy or failed state is about.
-enum GuidedStep { analyzing, estimating, deciding }
+enum GuidedStep { analyzing, estimating, reviewing, deciding }
 
 sealed class GuidedMealState extends Equatable {
   const GuidedMealState();
@@ -32,10 +34,13 @@ class GuidedInputState extends GuidedMealState {
 class GuidedBusyState extends GuidedMealState {
   final GuidedStep step;
 
-  const GuidedBusyState(this.step);
+  /// Who is being asked, for the step that asks someone else.
+  final String? detail;
+
+  const GuidedBusyState(this.step, {this.detail});
 
   @override
-  List<Object?> get props => [step];
+  List<Object?> get props => [step, detail];
 }
 
 /// The model's questions, with what the user has answered so far.
@@ -88,10 +93,27 @@ class GuidedDoneState extends GuidedMealState {
   /// estimate is still the first one.
   final String? verdict;
 
-  const GuidedDoneState(this.estimate, {this.verdict});
+  /// The assistant whose second opinion was fetched automatically and
+  /// weighed into [estimate], if one was.
+  final String? secondOpinionBy;
+
+  /// A second opinion was due and did not come; [estimate] is the first one.
+  final bool secondOpinionFailed;
+
+  const GuidedDoneState(
+    this.estimate, {
+    this.verdict,
+    this.secondOpinionBy,
+    this.secondOpinionFailed = false,
+  });
 
   @override
-  List<Object?> get props => [estimate, verdict];
+  List<Object?> get props => [
+    estimate,
+    verdict,
+    secondOpinionBy,
+    secondOpinionFailed,
+  ];
 }
 
 /// Drives the guided flow: photo and note, then the model's questions, then
@@ -213,8 +235,9 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
     if (photo == null || analysis == null) return;
     final attempt = ++_attempt;
     emit(const GuidedBusyState(GuidedStep.estimating));
+    final GuidedEstimate estimate;
     try {
-      final estimate = await _service.estimate(
+      estimate = await _service.estimate(
         photo: photo,
         analysis: analysis,
         answers: _answers,
@@ -222,12 +245,96 @@ class GuidedMealCubit extends Cubit<GuidedMealState> {
         note: _note,
         localeCode: localeCode,
       );
-      if (isClosed || attempt != _attempt) return;
-      _estimate = estimate;
-      _verdict = null;
-      emit(GuidedDoneState(estimate));
     } catch (e, stackTrace) {
       _fail(e, stackTrace, GuidedStep.estimating, attempt);
+      return;
+    }
+    if (isClosed || attempt != _attempt) return;
+    _estimate = estimate;
+    _verdict = null;
+    await _afterEstimate(
+      estimate,
+      attempt,
+      photo: photo,
+      analysis: analysis,
+      unknownLabel: unknownLabel,
+      localeCode: localeCode,
+    );
+  }
+
+  /// Ends the estimate step: either the result as it is, or — when the person
+  /// turned the automatic second opinion on and this estimate calls for one —
+  /// a second assistant checks it and the first weighs the two.
+  ///
+  /// Never fails the flow. The estimate the person already has is worth more
+  /// than a second opinion that did not come, so any trouble here ends in that
+  /// estimate with a note, not in an error screen.
+  Future<void> _afterEstimate(
+    GuidedEstimate estimate,
+    int attempt, {
+    required MealPhoto photo,
+    required GuidedAnalysis analysis,
+    required String unknownLabel,
+    String? localeCode,
+  }) async {
+    GuidedSecondary? secondary;
+    try {
+      final mode = await _service.autoSecondOpinion();
+      final wanted =
+          mode == AutoSecondOpinion.always ||
+          (mode == AutoSecondOpinion.uncertain && estimate.isUncertain);
+      if (wanted) secondary = await _service.secondary();
+    } catch (e) {
+      _log.info(
+        'Could not look up the second opinion setting: ${e.runtimeType}',
+      );
+    }
+    if (isClosed || attempt != _attempt) return;
+    if (secondary == null) {
+      emit(GuidedDoneState(estimate));
+      return;
+    }
+
+    emit(GuidedBusyState(GuidedStep.reviewing, detail: secondary.name));
+    try {
+      final review = await _service.review(
+        secondary: secondary,
+        photo: photo,
+        analysis: analysis,
+        answers: _answers,
+        estimate: estimate,
+        unknownLabel: unknownLabel,
+        note: _note,
+        localeCode: localeCode,
+      );
+      if (isClosed || attempt != _attempt) return;
+      final decision = await _service.decide(
+        photo: photo,
+        analysis: analysis,
+        answers: _answers,
+        estimate: estimate,
+        secondOpinion: guidedReviewAsSecondOpinion(
+          providerName: secondary.name,
+          review: review,
+        ),
+        unknownLabel: unknownLabel,
+        note: _note,
+        localeCode: localeCode,
+      );
+      if (isClosed || attempt != _attempt) return;
+      _estimate = decision.estimate;
+      _verdict = decision.verdict.isEmpty ? null : decision.verdict;
+      emit(
+        GuidedDoneState(
+          decision.estimate,
+          verdict: _verdict,
+          secondOpinionBy: secondary.name,
+        ),
+      );
+    } catch (e) {
+      if (isClosed || attempt != _attempt) return;
+      _log.info('Automatic second opinion failed: ${e.runtimeType}');
+      emit(GuidedDoneState(estimate, secondOpinionFailed: true));
     }
   }
 

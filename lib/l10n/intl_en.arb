@@ -1523,5 +1523,19 @@
   "aiAssistReasoningLow": "Low",
   "aiAssistReasoningMedium": "Medium",
   "aiAssistReasoningHigh": "High",
-  "aiAssistReasoningNote": "How much the model may think before answering in the follow-up question assistant. Automatic is medium for the questions and high for the estimate and the final decision. More thinking is slower and can use up a plan's allowance faster. Applies to Gemini and ChatGPT."
+  "aiAssistReasoningNote": "How much the model may think before answering in the follow-up question assistant. Automatic is medium for the questions and high for the estimate and the final decision. More thinking is slower and can use up a plan's allowance faster. Applies to Gemini and ChatGPT.",
+  "aiAssistAutoSecondLabel": "Automatic second opinion",
+  "aiAssistAutoSecondOff": "Off",
+  "aiAssistAutoSecondUncertain": "When the AI is unsure",
+  "aiAssistAutoSecondAlways": "Always",
+  "aiAssistAutoSecondNote": "Asks {name} for a second opinion by itself, then has your AI weigh both. Photo, your answers and the estimate are sent to {name} as well, and it uses up that provider's allowance.",
+  "@aiAssistAutoSecondNote": {"placeholders": {"name": {"type": "String"}}},
+  "aiAssistAutoSecondNoProvider": "Needs a second provider that is set up, for example ChatGPT as well as Gemini.",
+  "guidedMealReviewing": "Getting a second opinion from {name} …",
+  "@guidedMealReviewing": {"placeholders": {"name": {"type": "String"}}},
+  "guidedMealSecondBy": "A second opinion from {name} was fetched and weighed.",
+  "@guidedMealSecondBy": {"placeholders": {"name": {"type": "String"}}},
+  "guidedMealSecondFailed": "The automatic second opinion did not work out. This is the first estimate.",
+  "guidedMealDisclosureSecond": "With the automatic second opinion, photo and answers also go to {name} when one is fetched.",
+  "@guidedMealDisclosureSecond": {"placeholders": {"name": {"type": "String"}}}
 }

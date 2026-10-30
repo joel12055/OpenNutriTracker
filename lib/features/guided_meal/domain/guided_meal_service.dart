@@ -5,6 +5,8 @@ import 'package:opennutritracker/features/guided_meal/data/guided_tool_client.da
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_prompts.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_schemas.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_review.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_second_provider.dart';
 
 /// No provider is configured, or the feature is switched off.
 class GuidedUnavailableException implements Exception {
@@ -210,6 +212,58 @@ class GuidedMealService {
       ),
     );
     return guidedDecisionFromJson(reply);
+  }
+
+  /// What the person set for the automatic second opinion.
+  Future<AutoSecondOpinion> autoSecondOpinion() async =>
+      AutoSecondOpinion.fromTag(await _credentials.readAutoSecondOpinion());
+
+  /// The assistant that would give it, or null when no other is usable.
+  Future<GuidedSecondary?> secondary() => findSecondaryProvider(_credentials);
+
+  /// The setting and the assistant it would use, for the screen that has to
+  /// say where the photo goes. The assistant is only looked up when the
+  /// setting is on.
+  Future<({AutoSecondOpinion mode, String? name})> secondOpinionPlan() async {
+    final mode = await autoSecondOpinion();
+    if (mode == AutoSecondOpinion.off) return (mode: mode, name: null);
+    return (mode: mode, name: (await secondary())?.name);
+  }
+
+  /// A second opinion from [secondary]: it is shown the photo, the answers
+  /// and the first estimate and returns its own corrected list.
+  Future<GuidedReview> review({
+    required GuidedSecondary secondary,
+    required MealPhoto photo,
+    required GuidedAnalysis analysis,
+    required Map<String, GuidedAnswer> answers,
+    required GuidedEstimate estimate,
+    required String unknownLabel,
+    String? note,
+    String? localeCode,
+  }) async {
+    final reasoning = await _reasoning('high');
+    final reply = await _client.call(
+      secondary.selection,
+      GuidedToolRequest(
+        system: guidedReviewPrompt(localeCode: localeCode),
+        text: guidedReviewUserText(
+          note: note,
+          summary: analysis.summary,
+          questions: analysis.questions,
+          answers: answers,
+          unknownLabel: unknownLabel,
+          estimate: estimate,
+        ),
+        photo: photo,
+        toolName: reviewMealToolName,
+        toolDescription: reviewMealToolDescription,
+        schema: reviewMealSchema,
+        reasoningEffort: reasoning.effort,
+        reasoningChosen: reasoning.chosen,
+      ),
+    );
+    return guidedReviewFromJson(reply);
   }
 
   /// Asks every model this provider would be tried with one tiny question, no

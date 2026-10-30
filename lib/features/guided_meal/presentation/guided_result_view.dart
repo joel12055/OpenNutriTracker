@@ -31,6 +31,12 @@ class GuidedResultView extends StatefulWidget {
   /// What the model said it decided, once a second opinion was weighed.
   final String? verdict;
 
+  /// The assistant whose automatic second opinion went into this result.
+  final String? secondOpinionBy;
+
+  /// A second opinion was due and did not come.
+  final bool secondOpinionFailed;
+
   const GuidedResultView({
     super.key,
     required this.estimate,
@@ -39,6 +45,8 @@ class GuidedResultView extends StatefulWidget {
     required this.onContinue,
     required this.onSubmitSecondOpinion,
     this.verdict,
+    this.secondOpinionBy,
+    this.secondOpinionFailed = false,
   });
 
   @override
@@ -95,7 +103,17 @@ class _GuidedResultViewState extends State<GuidedResultView> {
                   ),
                 ),
               const SizedBox(height: 12),
-              if (widget.verdict != null)
+              if (widget.secondOpinionFailed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    s.guidedMealSecondFailed,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+              if (widget.verdict != null || widget.secondOpinionBy != null)
                 Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   color: theme.colorScheme.secondaryContainer,
@@ -111,12 +129,23 @@ class _GuidedResultViewState extends State<GuidedResultView> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          widget.verdict!,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
+                        if (widget.verdict != null)
+                          Text(
+                            widget.verdict!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSecondaryContainer,
+                            ),
                           ),
-                        ),
+                        if (widget.secondOpinionBy != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              s.guidedMealSecondBy(widget.secondOpinionBy!),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

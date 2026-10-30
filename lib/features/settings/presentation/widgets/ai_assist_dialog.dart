@@ -12,6 +12,7 @@ import 'package:opennutritracker/core/utils/plaintext_destination_guard.dart';
 import 'package:opennutritracker/features/add_meal/domain/usecase/probe_ai_endpoint_usecase.dart';
 import 'package:opennutritracker/features/add_meal/domain/usecase/run_ai_endpoint_probe_usecase.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/ai_consent_screen.dart';
+import 'package:opennutritracker/features/settings/presentation/widgets/auto_second_opinion_selector.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/chatgpt_sign_in_section.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/reasoning_level_selector.dart';
 import 'package:opennutritracker/generated/l10n.dart';
@@ -1137,6 +1138,13 @@ class _AiAssistDialogState extends State<AiAssistDialog> {
                         _provider == AiProvider.chatgpt) ...[
                       const SizedBox(height: 16),
                       ReasoningLevelSelector(storage: widget.storage),
+                      const SizedBox(height: 16),
+                      // Rebuilt when the provider changes, because which other
+                      // provider it would ask is a fact about the one in use.
+                      AutoSecondOpinionSelector(
+                        key: ValueKey(_provider),
+                        storage: widget.storage,
+                      ),
                     ],
                     // Directly under the pair it is a fact about. A stored
                     // verdict describes `(endpoint, model)` and is discarded

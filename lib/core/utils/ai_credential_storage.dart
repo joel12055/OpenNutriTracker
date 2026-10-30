@@ -289,6 +289,7 @@ class AiCredentialStorage {
   static const _enabledTag = 'AiAssistEnabledTag';
   static const _termsAcceptedTag = 'AiTermsAcceptedTag';
   static const _reasoningTag = 'AiReasoningLevelTag';
+  static const _autoSecondTag = 'AiAutoSecondOpinionTag';
   static const _providerTag = 'AiProviderTag';
   static const _modelTag = 'AiModelTag';
 
@@ -1107,6 +1108,7 @@ class AiCredentialStorage {
     await _storage.delete(key: _enabledTag);
     await _storage.delete(key: _termsAcceptedTag);
     await _storage.delete(key: _reasoningTag);
+    await _storage.delete(key: _autoSecondTag);
   });
 
   /// The legacy tag is the Anthropic slot under an older name, so it is
@@ -1203,6 +1205,23 @@ class AiCredentialStorage {
       await _storage.write(key: _reasoningTag, value: level);
     } else {
       await _storage.delete(key: _reasoningTag);
+    }
+  }
+
+  /// Whether the guided flow asks a second configured assistant for a second
+  /// opinion by itself: `off` (the default), `uncertain` or `always`. Off by
+  /// default because it sends the photo to a second company, which only the
+  /// person's own choice may do.
+  Future<String> readAutoSecondOpinion() async {
+    final value = await _storage.read(key: _autoSecondTag);
+    return const {'uncertain', 'always'}.contains(value) ? value! : 'off';
+  }
+
+  Future<void> writeAutoSecondOpinion(String mode) async {
+    if (const {'uncertain', 'always'}.contains(mode)) {
+      await _storage.write(key: _autoSecondTag, value: mode);
+    } else {
+      await _storage.delete(key: _autoSecondTag);
     }
   }
 

@@ -1445,5 +1445,19 @@
   "aiAssistReasoningLow": "Niedrig",
   "aiAssistReasoningMedium": "Mittel",
   "aiAssistReasoningHigh": "Hoch",
-  "aiAssistReasoningNote": "Wie viel das Modell im Rückfragen-Assistenten nachdenken darf, bevor es antwortet. Automatisch ist mittel für die Fragen und hoch für Schätzung und endgültige Entscheidung. Mehr Nachdenken ist langsamer und kann das Kontingent eines Abos schneller aufbrauchen. Gilt für Gemini und ChatGPT."
+  "aiAssistReasoningNote": "Wie viel das Modell im Rückfragen-Assistenten nachdenken darf, bevor es antwortet. Automatisch ist mittel für die Fragen und hoch für Schätzung und endgültige Entscheidung. Mehr Nachdenken ist langsamer und kann das Kontingent eines Abos schneller aufbrauchen. Gilt für Gemini und ChatGPT.",
+  "aiAssistAutoSecondLabel": "Automatische Zweitmeinung",
+  "aiAssistAutoSecondOff": "Aus",
+  "aiAssistAutoSecondUncertain": "Wenn die KI unsicher ist",
+  "aiAssistAutoSecondAlways": "Immer",
+  "aiAssistAutoSecondNote": "Holt die Zweitmeinung selbst bei {name} ein und lässt deine KI dann beide abwägen. Foto, deine Antworten und die Schätzung gehen dabei zusätzlich an {name} und verbrauchen dessen Kontingent.",
+  "@aiAssistAutoSecondNote": {"placeholders": {"name": {"type": "String"}}},
+  "aiAssistAutoSecondNoProvider": "Dafür brauchst du einen zweiten eingerichteten Anbieter, zum Beispiel ChatGPT zusätzlich zu Gemini.",
+  "guidedMealReviewing": "Hole die Zweitmeinung von {name} ein …",
+  "@guidedMealReviewing": {"placeholders": {"name": {"type": "String"}}},
+  "guidedMealSecondBy": "Eine Zweitmeinung von {name} wurde eingeholt und abgewogen.",
+  "@guidedMealSecondBy": {"placeholders": {"name": {"type": "String"}}},
+  "guidedMealSecondFailed": "Die automatische Zweitmeinung hat nicht geklappt. Das ist die Erstschätzung.",
+  "guidedMealDisclosureSecond": "Mit der automatischen Zweitmeinung gehen Foto und Antworten, wenn eine eingeholt wird, zusätzlich an {name}.",
+  "@guidedMealDisclosureSecond": {"placeholders": {"name": {"type": "String"}}}
 }
