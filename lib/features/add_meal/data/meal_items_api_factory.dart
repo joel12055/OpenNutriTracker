@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
 import 'package:opennutritracker/core/utils/ai_model_catalogue.dart';
+import 'package:opennutritracker/core/utils/ai_provider_endpoints.dart';
 import 'package:opennutritracker/core/utils/plaintext_destination_guard.dart';
 import 'package:opennutritracker/features/add_meal/data/anthropic_meal_items_api.dart';
 import 'package:opennutritracker/features/add_meal/data/openai_meal_items_api.dart';
@@ -100,6 +101,21 @@ MealItemsApi mealItemsApiFor(
       key,
       model: modelId,
       timeout: timeout ?? OpenAiMealItemsApi.defaultTimeout,
+    ),
+    // Google's OpenAI-compatible route: no broker to pin and nobody in
+    // between to name. `required` rather than a named function, as for a
+    // server the user runs, because one tool is defined and either means the
+    // same thing here.
+    AiProvider.gemini => OpenAiCompatibleMealItemsApi(
+      client,
+      key,
+      model: modelId,
+      endpoint: geminiChatEndpoint,
+      toolChoice: ToolChoiceMode.anyTool,
+      // Lowest thinking level, and a longer wait than the 20 s of the other
+      // hosted clients: Gemini 3 models think before answering.
+      extraBody: const {'reasoning_effort': 'low'},
+      timeout: timeout ?? const Duration(seconds: 60),
     ),
     // The user's own address, no broker, and **no forcing by name**: #733
     // measured that Ollama has no `tool_choice` field at all and llama.cpp

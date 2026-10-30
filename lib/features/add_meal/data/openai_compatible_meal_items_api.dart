@@ -132,12 +132,19 @@ class OpenAiCompatibleMealItemsApi implements MealItemsApi {
   /// the behaviour that was deliberate for them.
   final MealInterpreterFailure timeoutFailure;
 
+  /// Fields added to the request body as they are, for a provider that wants
+  /// one the others do not. Gemini's `reasoning_effort` is the case: its
+  /// models think before answering, and at their default level a reply can
+  /// take longer than this client waits.
+  final Map<String, Object?>? extraBody;
+
   OpenAiCompatibleMealItemsApi(
     this._client,
     this._apiKey, {
     required this.model,
     required this.endpoint,
     this.broker,
+    this.extraBody,
     this.toolChoice = ToolChoiceMode.namedFunction,
     this.failureFor = openRouterFailureFor,
     this.timeout = defaultTimeout,
@@ -169,6 +176,7 @@ class OpenAiCompatibleMealItemsApi implements MealItemsApi {
     final body = jsonEncode({
       'model': model,
       'max_tokens': _maxTokens,
+      ...?extraBody,
       // No top-level `system` field here: the OpenAI-compatible shape wants
       // it as the first message.
       'messages': [

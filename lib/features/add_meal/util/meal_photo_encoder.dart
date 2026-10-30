@@ -38,7 +38,10 @@ enum MealPhotoFormat {
   /// Exhaustive on purpose. A fifth provider has to answer this question
   /// rather than inherit whichever answer a wildcard happened to give it.
   static MealPhotoFormat forProvider(AiProvider provider) => switch (provider) {
-    AiProvider.anthropic || AiProvider.openrouter || AiProvider.openai => webp,
+    AiProvider.anthropic ||
+    AiProvider.openrouter ||
+    AiProvider.openai ||
+    AiProvider.gemini => webp,
     AiProvider.ownServer => jpeg,
   };
 }

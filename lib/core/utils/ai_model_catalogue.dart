@@ -189,6 +189,23 @@ abstract final class AiModelCatalogue {
     ),
   ];
 
+  /// One entry, on Google's free tier.
+  ///
+  /// `gemini-3.8-flash` was the first choice and is not the default: on the
+  /// free tier it answered 503 or not at all on a phone, while this one
+  /// answered in about three seconds (measured with the guided flow's
+  /// connection test, 2026-10-30).
+  ///
+  /// **Not screened against ONT's photo corpus**, unlike the Anthropic and
+  /// OpenAI entries above: this list was added for the guided meal flow, where
+  /// the user reviews every row, and has only been checked by hand. A second
+  /// entry would need a row note, and every note in [AiModelNote] is a
+  /// measured claim about the models ONT screened — none has been measured
+  /// for a Gemini model, so there is nothing true to print beside one.
+  static const gemini = <AiModel>[
+    AiModel(id: 'gemini-3.6-flash', servedBy: 'Google'),
+  ];
+
   /// Empty for [AiProvider.ownServer], and that is the answer rather than a
   /// gap. Membership of the lists above requires a behavioural screen the
   /// project cannot run against a machine it has never seen, and the user
@@ -198,6 +215,7 @@ abstract final class AiModelCatalogue {
     AiProvider.anthropic => anthropic,
     AiProvider.openrouter => openrouter,
     AiProvider.openai => openai,
+    AiProvider.gemini => gemini,
     AiProvider.ownServer => const [],
   };
 

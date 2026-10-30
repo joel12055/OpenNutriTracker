@@ -57,6 +57,30 @@ class ReadMealPhotoEvent extends BulkAddEvent {
   ];
 }
 
+/// Load the foods and weights the guided flow worked out.
+///
+/// They go through the same food search and the same review rows as a typed or
+/// photographed meal. [estimatedSuffix] is the localized "(estimated)" the
+/// name of a model-made food carries into the diary.
+class LoadGuidedMealEvent extends BulkAddEvent {
+  final List<GuidedEstimateItem> items;
+  final bool usesImperialUnits;
+  final String estimatedSuffix;
+
+  const LoadGuidedMealEvent({
+    required this.items,
+    required this.usesImperialUnits,
+    required this.estimatedSuffix,
+  });
+
+  @override
+  List<Object?> get props => [
+    items.map((item) => item.name).toList(),
+    usesImperialUnits,
+    estimatedSuffix,
+  ];
+}
+
 /// The photo never made it as far as the model — the picker threw, or the
 /// encoder could not produce something sendable.
 ///

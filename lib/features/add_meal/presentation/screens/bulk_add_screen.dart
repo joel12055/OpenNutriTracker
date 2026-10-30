@@ -23,6 +23,8 @@ import 'package:opennutritracker/features/add_meal/util/portion_unit.dart';
 import 'package:opennutritracker/features/add_meal/util/meal_text_parser.dart';
 import 'package:opennutritracker/features/add_meal/presentation/widgets/own_server_wait_indicator.dart';
 import 'package:opennutritracker/features/add_meal/presentation/widgets/quick_add_bottom_sheet.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_estimate_meal.dart';
+import 'package:opennutritracker/features/guided_meal/presentation/guided_meal_screen.dart';
 import 'package:opennutritracker/features/diary/presentation/bloc/calendar_day_bloc.dart';
 import 'package:opennutritracker/features/diary/presentation/bloc/diary_bloc.dart';
 import 'package:opennutritracker/features/home/presentation/bloc/home_bloc.dart';
@@ -303,6 +305,21 @@ class _BulkAddScreenState extends State<BulkAddScreen> {
       appBar: AppBar(
         title: Text(S.of(context).bulkAddTitle),
         actions: [
+          // The guided flow needs exactly what the photo reader needs — a
+          // provider that can see — so it is offered under the same condition.
+          FutureBuilder<bool>(
+            future: _photoAvailable,
+            builder: (context, snapshot) => snapshot.data == true
+                ? Semantics(
+                    identifier: 'bulk-add-guided',
+                    child: IconButton(
+                      onPressed: _onGuidedPressed,
+                      icon: const Icon(Icons.quiz_rounded),
+                      tooltip: S.of(context).guidedMealTitle,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
           // Only offered when the user has a key enabled. There is no
           // offline way to read a photo, so showing the action to everyone
           // would advertise a button that can only ever apologise.
@@ -955,6 +972,16 @@ class _BulkAddScreenState extends State<BulkAddScreen> {
                         color: theme.colorScheme.error,
                       ),
                     )
+                  // A food the model made up numbers for. Above every other
+                  // hint: the user should know before anything else that this
+                  // row is not from a food database.
+                  else if (isGuidedEstimate(meal))
+                    Text(
+                      S.of(context).guidedMealEstimatedRowLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.tertiary,
+                      ),
+                    )
                   else if (row.isLowConfidence)
                     Text(
                       S.of(context).bulkAddUncertainLabel,
@@ -1325,6 +1352,7 @@ class _BulkAddScreenState extends State<BulkAddScreen> {
       // No placeholder: a direct path has no serving vendor to name, so this
       // string is flat where OpenRouter's is parameterised.
       AiProvider.openai => S.of(context).bulkAddPhotoDisclosureOpenAI,
+      AiProvider.gemini => S.of(context).bulkAddPhotoDisclosureGemini,
       // The address, and nothing beyond it. Not "no third party receives it",
       // however tempting: the app cannot tell a local runtime from a
       // self-hosted proxy forwarding to OpenAI, and #732 ruled those out of
@@ -1413,6 +1441,24 @@ class _BulkAddScreenState extends State<BulkAddScreen> {
         photo: photo,
         usesImperialUnits: _args.usesImperialUnits,
         localeCode: Localizations.localeOf(context).languageCode,
+      ),
+    );
+  }
+
+  /// Opens the guided flow and, when it comes back with an estimate, feeds it
+  /// to the same review rows every other way of adding a meal ends in.
+  Future<void> _onGuidedPressed() async {
+    final result = await GuidedMealScreen.open(context);
+    if (result == null || !mounted) return;
+
+    // The estimate replaces the previous batch, so the old controllers go
+    // with it.
+    _resetAmountControllers();
+    _bloc.add(
+      LoadGuidedMealEvent(
+        items: result.estimate.items,
+        usesImperialUnits: _args.usesImperialUnits,
+        estimatedSuffix: S.of(context).guidedMealEstimatedSuffix,
       ),
     );
   }

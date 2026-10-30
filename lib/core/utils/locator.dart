@@ -79,6 +79,8 @@ import 'package:opennutritracker/core/utils/off_micronutrient_repair.dart';
 import 'package:opennutritracker/core/utils/tracked_day_reconciler.dart';
 import 'package:opennutritracker/core/utils/env.dart';
 import 'package:http/http.dart' as http;
+import 'package:opennutritracker/features/guided_meal/data/guided_tool_client.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_meal_service.dart';
 import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
 import 'package:opennutritracker/features/add_meal/data/meal_items_api_factory.dart';
 import 'package:opennutritracker/features/add_meal/data/model_meal_photo_interpreter.dart';
@@ -173,6 +175,12 @@ Future<void> initLocator() async {
       locator<AiCredentialStorage>(),
       (selection) =>
           ModelMealTextInterpreter(mealItemsApiFor(locator(), selection)),
+    ),
+  );
+  locator.registerLazySingleton<GuidedMealService>(
+    () => GuidedMealService(
+      locator<AiCredentialStorage>(),
+      GuidedToolClient(locator<http.Client>()),
     ),
   );
   locator.registerLazySingleton<ReadMealPhotoUseCase>(

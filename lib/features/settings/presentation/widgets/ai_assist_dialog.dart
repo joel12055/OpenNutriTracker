@@ -883,6 +883,7 @@ class _AiAssistDialogState extends State<AiAssistDialog> {
     AiProvider.anthropic => 'Anthropic',
     AiProvider.openrouter => 'OpenRouter',
     AiProvider.openai => 'OpenAI',
+    AiProvider.gemini => 'Google Gemini',
     // The only one that is not a brand, so the only one that is localized.
     // **Never "local"**: that word is simultaneously what the ecosystem calls
     // Ollama and what a user reads as *on my phone* — the claim reserved for

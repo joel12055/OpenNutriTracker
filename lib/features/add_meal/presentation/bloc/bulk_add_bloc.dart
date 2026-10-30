@@ -9,6 +9,8 @@ import 'package:opennutritracker/features/add_meal/domain/usecase/resolve_parsed
 import 'package:opennutritracker/features/add_meal/util/meal_text_parser.dart';
 import 'package:opennutritracker/features/add_meal/util/portion_match.dart';
 import 'package:opennutritracker/features/add_meal/util/portion_unit.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_estimate_meal.dart';
+import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
 import 'package:opennutritracker/features/meal_detail/presentation/bloc/meal_detail_bloc.dart';
 import 'package:opennutritracker/features/meal_detail/util/meal_quantity_converter.dart';
 
@@ -407,6 +409,7 @@ class BulkAddBloc extends Bloc<BulkAddEvent, BulkAddState> {
   ) : super(const BulkAddInitial()) {
     on<ParseBulkTextEvent>(_onParse);
     on<ReadMealPhotoEvent>(_onReadPhoto);
+    on<LoadGuidedMealEvent>(_onLoadGuided);
     on<ReadMealPhotoFailedEvent>(
       (event, emit) => emit(BulkAddPhotoErrorState(event.error)),
     );
@@ -494,6 +497,47 @@ class BulkAddBloc extends Bloc<BulkAddEvent, BulkAddState> {
     }
   }
 
+  /// The guided flow already knows the foods and their weights, so there is
+  /// no model read here: the items go straight to the food search.
+  ///
+  /// The model's own per-100 g figures stand in where the search finds
+  /// nothing or finds a food whose energy disagrees with them; see
+  /// [mergeGuidedEstimate].
+  Future<void> _onLoadGuided(
+    LoadGuidedMealEvent event,
+    Emitter<BulkAddState> emit,
+  ) async {
+    final attempt = ++_attempt;
+    emit(BulkAddLoadingState(attempt: attempt));
+
+    final byQuery = {for (final item in event.items) item.name: item};
+    await _resolveAndEmit(
+      MealTextParseResult(
+        items: [
+          for (final item in event.items)
+            ParsedMealItem(
+              query: item.name,
+              quantity: item.grams,
+              unit: UnitDropdownItem.gml.toString(),
+            ),
+        ],
+        errors: const [],
+      ),
+      emit,
+      attempt: attempt,
+      usesImperialUnits: event.usesImperialUnits,
+      source: BulkAddReadSource.photo,
+      withEstimates: (resolved) => [
+        for (final item in resolved)
+          mergeGuidedEstimate(
+            item,
+            byQuery[item.parsed.query],
+            event.estimatedSuffix,
+          ),
+      ],
+    );
+  }
+
   /// Leaves the loading state and orphans the read in flight.
   ///
   /// Bumping [_attempt] is the whole mechanism: the handler still awaiting
@@ -520,6 +564,8 @@ class BulkAddBloc extends Bloc<BulkAddEvent, BulkAddState> {
     required bool usesImperialUnits,
     required BulkAddReadSource source,
     MealTextModelFailure? modelFailure,
+    List<ResolvedMealItem> Function(List<ResolvedMealItem> resolved)?
+    withEstimates,
   }) async {
     if (parsed.items.isEmpty) {
       // Nothing usable. The parser's own errors still go through so the
@@ -537,8 +583,9 @@ class BulkAddBloc extends Bloc<BulkAddEvent, BulkAddState> {
     }
 
     try {
-      final resolved = await _resolveParsedMealsUseCase.resolve(parsed.items);
+      var resolved = await _resolveParsedMealsUseCase.resolve(parsed.items);
       if (emit.isDone || _superseded(attempt)) return;
+      if (withEstimates != null) resolved = withEstimates(resolved);
 
       emit(
         BulkAddLoadedState(
