@@ -67,8 +67,8 @@ void main() {
   testWidgets('the collapsed summary counts the enabled sources', (
     tester,
   ) async {
-    // Four of five selectable sources on, plus Open Food Facts, which is
-    // always searched and has no switch: 5 of 6.
+    // Five of six selectable sources on, plus Open Food Facts, which is
+    // always searched and has no switch: 6 of 7.
     await pumpPage(
       tester,
       toggles: {
@@ -77,11 +77,12 @@ void main() {
         'fdc_survey': true,
         'fdc_branded': false,
         'bls': true,
+        'swiss': true,
       },
     );
 
     expect(
-      find.text(l10nEn.onboardingFoodSourcesEnabledCount(5, 6)),
+      find.text(l10nEn.onboardingFoodSourcesEnabledCount(6, 7)),
       findsOneWidget,
     );
   });
@@ -114,7 +115,7 @@ void main() {
     );
 
     expect(
-      find.text(l10nEn.onboardingFoodSourcesEnabledCount(6, 6)),
+      find.text(l10nEn.onboardingFoodSourcesEnabledCount(7, 7)),
       findsOneWidget,
     );
 
@@ -129,7 +130,7 @@ void main() {
 
     expect(reported?['bls'], isFalse);
     expect(
-      find.text(l10nEn.onboardingFoodSourcesEnabledCount(5, 6)),
+      find.text(l10nEn.onboardingFoodSourcesEnabledCount(6, 7)),
       findsOneWidget,
     );
   });

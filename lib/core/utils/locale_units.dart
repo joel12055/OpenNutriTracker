@@ -73,8 +73,8 @@ const _blsCountries = {'DE', 'AT', 'CH'};
 /// Open Food Facts is always searched and is not part of this map, so
 /// branded-product coverage is the same either way. Only the reference
 /// database changes. A German-speaking user gets the BLS and no US
-/// supermarket items; everyone else gets the FDC set and no German-language
-/// BLS entries.
+/// supermarket items, and the Swiss database whose food names exist in German
+/// only; everyone else gets the FDC set and neither.
 ///
 /// The FDC *generic* sources stay on for German speakers, because
 /// `food_translation` surfaces those foods under German names.
@@ -84,7 +84,7 @@ Map<String, bool> defaultFoodSourceToggles(String localeName) {
   return <String, bool>{
     for (final source in SPConst.settingsSelectableFoodSources)
       source: switch (source) {
-        SPConst.blsSourceCode => usesBls,
+        SPConst.blsSourceCode || SPConst.swissSourceCode => usesBls,
         // US branded products are the one set that is regionally wrong,
         // not merely foreign.
         'fdc_branded' => !usesBls,

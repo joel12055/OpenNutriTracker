@@ -89,6 +89,8 @@ void main() {
       for (final locale in ['de_DE', 'de_AT', 'de_CH']) {
         final toggles = defaultFoodSourceToggles(locale);
         expect(toggles['bls'], isTrue, reason: locale);
+        // Its names exist in German only, so it is a German-speaker's source.
+        expect(toggles['swiss'], isTrue, reason: locale);
         expect(toggles['fdc_branded'], isFalse, reason: locale);
         // The generic FDC sources stay: food_translation gives them German
         // names, so they read as reference entries rather than noise.
@@ -102,6 +104,7 @@ void main() {
       for (final locale in ['en_US', 'en_GB', 'it_IT', 'pl_PL']) {
         final toggles = defaultFoodSourceToggles(locale);
         expect(toggles['bls'], isFalse, reason: locale);
+        expect(toggles['swiss'], isFalse, reason: locale);
         expect(toggles['fdc_branded'], isTrue, reason: locale);
         expect(toggles['fdc_foundation'], isTrue, reason: locale);
       }

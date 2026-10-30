@@ -93,6 +93,10 @@ class SPConst {
   /// food_source.code of the Bundeslebensmittelschlüssel.
   static const blsSourceCode = 'bls';
 
+  /// food_source.code of the Swiss Food Composition Database (BLV). Its food
+  /// names exist in German only.
+  static const swissSourceCode = 'swiss';
+
   /// BLS food-group letters (first character of the BLS code) that denote
   /// beverages: N = alkoholfreie Getränke, P = alkoholische Getränke.
   /// Used to default drinks to millilitre entry in the app.
@@ -106,6 +110,7 @@ class SPConst {
     'fdc_survey': 'FoodData Central (FNDDS Survey)',
     'fdc_branded': 'FoodData Central (Branded Foods)',
     'bls': 'Bundeslebensmittelschlüssel (BLS)',
+    'swiss': 'Schweizer Nährwertdatenbank (BLV)',
     'indb': 'Indian Nutrient Databank (INDB)',
     'tbca': 'Tabela Brasileira de Composição de Alimentos (TBCA)',
   };
@@ -118,6 +123,7 @@ class SPConst {
     'fdc_survey': 'FDC Survey',
     'fdc_branded': 'FDC Branded',
     'bls': 'BLS',
+    'swiss': 'SFCDB',
     'indb': 'INDB',
     'tbca': 'TBCA',
   };
@@ -131,6 +137,7 @@ class SPConst {
     'fdc_survey',
     'fdc_branded',
     'bls',
+    'swiss',
   ];
 
   /// Public website per backend source: the "learn more" link in Settings →
@@ -142,6 +149,7 @@ class SPConst {
     'fdc_survey': 'https://fdc.nal.usda.gov',
     'fdc_branded': 'https://fdc.nal.usda.gov',
     'bls': 'https://www.blsdb.de',
+    'swiss': 'https://naehrwertdaten.ch',
     'indb': 'https://www.anuvaad.org.in',
     'tbca': 'https://www.tbca.net.br',
   };
