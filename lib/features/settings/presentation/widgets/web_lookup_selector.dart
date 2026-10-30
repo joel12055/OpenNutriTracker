@@ -4,10 +4,10 @@ import 'package:opennutritracker/generated/l10n.dart';
 
 /// Where the person turns the web search for unknown foods on.
 ///
-/// Off unless chosen: it sends the model's short search queries to OpenAI or
-/// Google, and that is the person's decision to make. It runs through the
-/// ChatGPT plan, else on a Gemini key, whichever provider is in use for the
-/// rest, so without either the switch is disabled and the note says why.
+/// Off unless chosen: it sends the model's short search queries to OpenAI, and
+/// that is the person's decision to make. It runs through the ChatGPT plan,
+/// whichever provider is in use for the rest, so without that sign-in and a
+/// model the switch is disabled and the note says why.
 class WebLookupSelector extends StatefulWidget {
   final AiCredentialStorage storage;
 
@@ -33,13 +33,10 @@ class _WebLookupSelectorState extends State<WebLookupSelector> {
     final model = (await widget.storage.selectionFor(
       AiProvider.chatgpt,
     ))?.modelId;
-    final key = (await widget.storage.selectionFor(AiProvider.gemini))?.apiKey;
     if (!mounted) return;
     setState(() {
       _on = on;
-      _hasRoute =
-          (model != null && model.isNotEmpty) ||
-          (key != null && key.isNotEmpty);
+      _hasRoute = model != null && model.isNotEmpty;
       _loading = false;
     });
   }
@@ -77,7 +74,7 @@ class _WebLookupSelectorState extends State<WebLookupSelector> {
           ),
         ),
         Text(
-          _hasRoute ? s.aiAssistWebLookupNote : s.aiAssistWebLookupNoKey,
+          _hasRoute ? s.aiAssistWebLookupNote : s.aiAssistWebLookupNoSignIn,
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

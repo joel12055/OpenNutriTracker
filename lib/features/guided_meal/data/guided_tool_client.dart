@@ -157,7 +157,7 @@ class GuidedToolClient {
         return reply;
       } on MealInterpreterException catch (e) {
         final last = i == candidates.length - 1;
-        if (last || !isOverload(e)) rethrow;
+        if (last || !_isOverload(e)) rethrow;
         _log.info(
           '${candidates[i]} unavailable (${e.statusCode ?? e.failure.name}), '
           'trying ${candidates[i + 1]}',
@@ -170,7 +170,7 @@ class GuidedToolClient {
 
   /// A server-side hiccup, a spent quota or silence on this model, which
   /// another model of the same provider may well not share.
-  static bool isOverload(MealInterpreterException e) =>
+  static bool _isOverload(MealInterpreterException e) =>
       e.failure == MealInterpreterFailure.timeout ||
       switch (e.statusCode) {
         429 || 500 || 502 || 503 || 504 => true,
@@ -274,7 +274,7 @@ class GuidedToolClient {
         },
       ],
     });
-    final decoded = await post(
+    final decoded = await _post(
       client: _client,
       uri: Uri.parse(_anthropicEndpoint),
       headers: {
@@ -337,7 +337,7 @@ class GuidedToolClient {
       'store': false,
       'max_output_tokens': request.maxTokens,
     });
-    final decoded = await post(
+    final decoded = await _post(
       client: _client,
       uri: Uri.parse(_openAiEndpoint),
       headers: {'authorization': 'Bearer ${selection.apiKey ?? ''}'},
@@ -611,7 +611,7 @@ class GuidedToolClient {
       'tool_choice': toolChoice,
       'provider': ?routing,
     });
-    final decoded = await post(
+    final decoded = await _post(
       client: client,
       uri: uri,
       headers: {
@@ -639,7 +639,7 @@ class GuidedToolClient {
     throw _noToolCall();
   }
 
-  static Future<Map<String, dynamic>> post({
+  static Future<Map<String, dynamic>> _post({
     required http.Client client,
     required Uri uri,
     required Map<String, String> headers,

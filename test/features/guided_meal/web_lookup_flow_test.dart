@@ -157,28 +157,9 @@ String _searchSse() {
   ].join();
 }
 
-String _searchReply() => jsonEncode({
-  'candidates': [
-    {
-      'content': {
-        'parts': [
-          {'text': _findings},
-        ],
-      },
-      'groundingMetadata': {
-        'webSearchQueries': ['Big Mac Naehrwerte'],
-        'groundingChunks': [
-          {
-            'web': {'uri': 'https://g.example/1', 'title': 'mcdonalds.de'},
-          },
-        ],
-      },
-    },
-  ],
-});
-
-/// Gemini is in use with the web search on; ChatGPT is signed in as the second
-/// provider when [withSecond]. [calls] records who got what.
+/// Gemini is in use and ChatGPT is signed in, which is what runs the web
+/// search; with [withSecond] the plan is also asked for the second opinion.
+/// [calls] records who got what.
 class _Setup {
   final calls = <String>[];
   final bodies = <Map<String, dynamic>>[];
@@ -194,12 +175,10 @@ class _Setup {
       _MapStorage({
         'AiProviderTag': 'gemini',
         'AiApiKeyTag.gemini': 'k',
+        'AiApiKeyTag.chatgpt': AiCredentialStorage.chatGptSessionMarker,
         'AiAssistEnabledTag': 'true',
         if (web) 'AiWebLookupTag': 'on',
-        if (withSecond) ...{
-          'AiApiKeyTag.chatgpt': AiCredentialStorage.chatGptSessionMarker,
-          'AiAutoSecondOpinionTag': 'always',
-        },
+        if (withSecond) 'AiAutoSecondOpinionTag': 'always',
       }),
     );
     service = GuidedMealService(
@@ -262,21 +241,15 @@ class _Setup {
       ),
       GuidedWebSearchClient(
         MockClient((request) async {
-          if (request.url.host == 'api.openai.com') {
-            calls.add('web:chatgpt');
-            return searchAnswer?.call() ??
-                http.Response(
-                  _searchSse(),
-                  200,
-                  headers: {'content-type': 'text/event-stream; charset=utf-8'},
-                );
-          }
-          final model = request.url.pathSegments.last.split(':').first;
-          calls.add('web:$model');
-          return searchAnswer?.call() ?? http.Response(_searchReply(), 200);
+          calls.add('web:chatgpt');
+          return searchAnswer?.call() ??
+              http.Response(
+                _searchSse(),
+                200,
+                headers: {'content-type': 'text/event-stream; charset=utf-8'},
+              );
         }),
-        retryDelay: Duration.zero,
-        chatGpt: _Tokens(),
+        _Tokens(),
       ),
     );
   }
@@ -314,62 +287,22 @@ Widget _app(Widget child) => MaterialApp(
 
 void main() {
   group('availability', () {
-    test('needs the switch on and a Gemini key', () async {
+    test('needs the switch on and a ChatGPT sign-in with a model', () async {
       final on = _Setup();
+      expect(await on.service.webLookupAvailable(), isFalse);
+      await on.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
       expect(await on.service.webLookupAvailable(), isTrue);
 
       final off = _Setup(web: false);
+      await off.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
       expect(await off.service.webLookupAvailable(), isFalse);
     });
 
-    test('the key is the Gemini one, whichever provider is in use', () async {
+    test('the plan is enough, whichever provider is in use', () async {
       final storage = AiCredentialStorage(
         _MapStorage({
           'AiProviderTag': 'anthropic',
           'AiApiKeyTag.anthropic': 'sk',
-          'AiApiKeyTag.gemini': 'k',
-          'AiAssistEnabledTag': 'true',
-          'AiWebLookupTag': 'on',
-        }),
-      );
-      final client = http.Client();
-      addTearDown(client.close);
-      final service = GuidedMealService(
-        storage,
-        GuidedToolClient(client),
-        GuidedWebSearchClient(client),
-      );
-
-      expect(await service.webLookupAvailable(), isTrue);
-    });
-
-    test(
-      'the plan is preferred to the key, and the queries go to OpenAI',
-      () async {
-        final setup = _Setup(withSecond: true);
-        await setup.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
-
-        expect(await setup.service.webLookupAvailable(), isTrue);
-        expect(await setup.service.webLookupDestination(), 'OpenAI');
-      },
-    );
-
-    test('with only a Gemini key the queries go to Google', () async {
-      final setup = _Setup();
-
-      expect(await setup.service.webLookupDestination(), 'Google');
-    });
-
-    test('a plan with no model picked yet leaves the key to do it', () async {
-      final setup = _Setup(withSecond: true);
-
-      expect(await setup.service.webLookupDestination(), 'Google');
-    });
-
-    test('the plan alone is enough, no key needed', () async {
-      final storage = AiCredentialStorage(
-        _MapStorage({
-          'AiProviderTag': 'chatgpt',
           'AiApiKeyTag.chatgpt': AiCredentialStorage.chatGptSessionMarker,
           'AiAssistEnabledTag': 'true',
           'AiWebLookupTag': 'on',
@@ -381,24 +314,31 @@ void main() {
       final service = GuidedMealService(
         storage,
         GuidedToolClient(client),
-        GuidedWebSearchClient(client, chatGpt: _Tokens()),
+        GuidedWebSearchClient(client, _Tokens()),
       );
 
       expect(await service.webLookupAvailable(), isTrue);
       expect(await service.webLookupDestination(), 'OpenAI');
     });
 
-    test('with the switch off there is no destination to name', () async {
-      final setup = _Setup(web: false);
+    test(
+      'the queries go to OpenAI, and nowhere when the switch is off',
+      () async {
+        final on = _Setup();
+        await on.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
+        expect(await on.service.webLookupDestination(), 'OpenAI');
 
-      expect(await setup.service.webLookupDestination(), isNull);
-    });
+        final off = _Setup(web: false);
+        await off.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
+        expect(await off.service.webLookupDestination(), isNull);
+      },
+    );
 
-    test('without a Gemini key the switch changes nothing', () async {
+    test('a Gemini key alone changes nothing', () async {
       final storage = AiCredentialStorage(
         _MapStorage({
-          'AiProviderTag': 'anthropic',
-          'AiApiKeyTag.anthropic': 'sk',
+          'AiProviderTag': 'gemini',
+          'AiApiKeyTag.gemini': 'k',
           'AiAssistEnabledTag': 'true',
           'AiWebLookupTag': 'on',
         }),
@@ -408,10 +348,11 @@ void main() {
       final service = GuidedMealService(
         storage,
         GuidedToolClient(client),
-        GuidedWebSearchClient(client),
+        GuidedWebSearchClient(client, _Tokens()),
       );
 
       expect(await service.webLookupAvailable(), isFalse);
+      expect(await service.webLookupDestination(), isNull);
     });
 
     test(
@@ -461,7 +402,7 @@ void main() {
         expect(setup.calls, [
           'gemini:$askQuestionsToolName',
           'gemini:$estimateMealToolName',
-          'web:gemini-2.5-flash',
+          'web:chatgpt',
           'gemini:$decideMealToolName',
         ]);
         final estimateSystem =
@@ -485,6 +426,7 @@ void main() {
 
     test('the screen goes through searching and deciding', () async {
       final setup = _Setup();
+      await setup.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
       final cubit = GuidedMealCubit(setup.service);
       final steps = <GuidedStep>[];
       cubit.stream.listen((state) {
@@ -570,16 +512,6 @@ void main() {
       expect(done.web?.sources.single.title, 'mcdonalds.de');
     });
 
-    test('a failing plan search is no reason to ask Google instead', () async {
-      final setup = _Setup(withSecond: true);
-      setup.searchAnswer = () => http.Response('{}', 500);
-
-      final cubit = await setup.reachEstimate();
-
-      expect(setup.calls.where((c) => c.startsWith('web:')), ['web:chatgpt']);
-      expect((cubit.state as GuidedDoneState).webFailed, isTrue);
-    });
-
     test(
       'a second opinion pasted in later is weighed together with the web findings',
       () async {
@@ -613,19 +545,20 @@ void main() {
   });
 
   group('the connection test', () {
-    test('also asks the search models when the web search is on', () async {
+    test('also asks the model of the plan with the search tool', () async {
       final setup = _Setup();
       await setup.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
 
       final results = await setup.service.testConnection();
 
       expect(
-        results.map((r) => r.model),
-        containsAll(['gemini-2.5-flash + web', 'gemini-2.5-flash-lite + web']),
+        results.where((r) => r.model.endsWith('+ web')).map((r) => r.model),
+        ['gpt-a + web'],
       );
+      expect(setup.calls.where((c) => c.startsWith('web:')), ['web:chatgpt']);
       expect(
-        results.where((r) => r.model.endsWith('+ web')).map((r) => r.outcome),
-        everyElement(GuidedProbeOutcome.ok),
+        results.singleWhere((r) => r.model == 'gpt-a + web').outcome,
+        GuidedProbeOutcome.ok,
       );
     });
 
@@ -633,42 +566,27 @@ void main() {
       'a search that answers with nothing is not a working search',
       () async {
         final setup = _Setup();
-        setup.searchAnswer = () =>
-            http.Response(jsonEncode({'candidates': <Object?>[]}), 200);
-
-        final results = await setup.service.testConnection();
-
-        final web = results.where((r) => r.model.endsWith('+ web'));
-        expect(web, isNotEmpty);
-        expect(
-          web.map((r) => r.outcome),
-          everyElement(isNot(GuidedProbeOutcome.ok)),
-        );
-      },
-    );
-
-    test(
-      'asks the one model of the plan, and not Gemini, on that route',
-      () async {
-        final setup = _Setup(withSecond: true);
         await setup.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
+        setup.searchAnswer = () => http.Response(
+          'data: ${jsonEncode({
+            'type': 'response.completed',
+            'response': {'output': <Object?>[]},
+          })}\n\n',
+          200,
+          headers: {'content-type': 'text/event-stream; charset=utf-8'},
+        );
 
         final results = await setup.service.testConnection();
 
-        expect(
-          results.where((r) => r.model.endsWith('+ web')).map((r) => r.model),
-          ['gpt-a + web'],
-        );
-        expect(setup.calls.where((c) => c.startsWith('web:')), ['web:chatgpt']);
         expect(
           results.singleWhere((r) => r.model == 'gpt-a + web').outcome,
-          GuidedProbeOutcome.ok,
+          isNot(GuidedProbeOutcome.ok),
         );
       },
     );
 
     test('says so when the plan cannot search', () async {
-      final setup = _Setup(withSecond: true);
+      final setup = _Setup();
       await setup.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
       setup.searchAnswer = () => http.Response('{}', 401);
 
@@ -682,16 +600,19 @@ void main() {
 
     test('leaves the search out when it is off', () async {
       final setup = _Setup(web: false);
+      await setup.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
 
       final results = await setup.service.testConnection();
 
       expect(results.where((r) => r.model.endsWith('+ web')), isEmpty);
+      expect(setup.calls.where((c) => c.startsWith('web:')), isEmpty);
     });
   });
 
   group('the settings switch', () {
     testWidgets('stores the choice', (tester) async {
       final setup = _Setup(web: false);
+      await setup.storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
       await tester.pumpWidget(_app(WebLookupSelector(storage: setup.storage)));
       await tester.pumpAndSettle();
 
@@ -707,25 +628,27 @@ void main() {
       expect(await setup.storage.readWebLookup(), 'off');
     });
 
-    testWidgets('is disabled and says what is missing without a Gemini key', (
-      tester,
-    ) async {
-      final storage = AiCredentialStorage(
-        _MapStorage({
-          'AiProviderTag': 'anthropic',
-          'AiApiKeyTag.anthropic': 'sk',
-          'AiAssistEnabledTag': 'true',
-          'AiWebLookupTag': 'on',
-        }),
-      );
-      await tester.pumpWidget(_app(WebLookupSelector(storage: storage)));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'is disabled and says what is missing without a ChatGPT sign-in',
+      (tester) async {
+        final storage = AiCredentialStorage(
+          _MapStorage({
+            'AiProviderTag': 'anthropic',
+            'AiApiKeyTag.anthropic': 'sk',
+            'AiApiKeyTag.gemini': 'k',
+            'AiAssistEnabledTag': 'true',
+            'AiWebLookupTag': 'on',
+          }),
+        );
+        await tester.pumpWidget(_app(WebLookupSelector(storage: storage)));
+        await tester.pumpAndSettle();
 
-      expect(find.textContaining('Gemini-Schlüssel'), findsOneWidget);
-      final switchWidget = tester.widget<Switch>(find.byType(Switch));
-      expect(switchWidget.onChanged, isNull);
-      expect(switchWidget.value, isFalse);
-    });
+        expect(find.textContaining('ChatGPT-Anmeldung'), findsOneWidget);
+        final switchWidget = tester.widget<Switch>(find.byType(Switch));
+        expect(switchWidget.onChanged, isNull);
+        expect(switchWidget.value, isFalse);
+      },
+    );
   });
 
   group('the result', () {

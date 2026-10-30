@@ -71,34 +71,27 @@ class GuidedMealService {
 
   GuidedMealService(this._credentials, this._client, [this._web]);
 
-  /// How the web search would be run: through the person's ChatGPT plan, which
-  /// costs nothing more, else on a Gemini key. Whichever provider is in use for
-  /// the rest. Null when neither is usable.
-  Future<_WebRoute?> _webRoute() async {
+  /// The model that would run the web search: the one the person picked for
+  /// their ChatGPT plan, whichever provider is in use for the rest. The plan
+  /// costs nothing more. Null without a sign-in and a model.
+  Future<String?> _webModel() async {
     if (_web == null) return null;
     final model = (await _credentials.selectionFor(
       AiProvider.chatgpt,
     ))?.modelId;
-    if (model != null && model.isNotEmpty) return _WebRoute.chatGpt(model);
-    final key = (await _credentials.selectionFor(AiProvider.gemini))?.apiKey;
-    if (key != null && key.isNotEmpty) return _WebRoute.gemini(key);
-    return null;
+    return model != null && model.isNotEmpty ? model : null;
   }
 
   /// Whether the person switched the web search on and there is a way to run
   /// it.
   Future<bool> webLookupAvailable() async =>
-      await _credentials.readWebLookup() == 'on' && await _webRoute() != null;
+      await _credentials.readWebLookup() == 'on' && await _webModel() != null;
 
   /// The company that would get the search queries, or null when the web
   /// search is off or cannot be run. For the screen that has to say where the
   /// queries go.
-  Future<String?> webLookupDestination() async {
-    if (await _credentials.readWebLookup() != 'on') return null;
-    final route = await _webRoute();
-    if (route == null) return null;
-    return route.isChatGpt ? 'OpenAI' : 'Google';
-  }
+  Future<String?> webLookupDestination() async =>
+      await webLookupAvailable() ? 'OpenAI' : null;
 
   /// The foods of [estimate] to look up: none unless the web search is
   /// available.
@@ -112,10 +105,10 @@ class GuidedMealService {
   /// queries leave the phone, never the photo.
   Future<GuidedWebResearch> research(List<GuidedWebLookup> lookups) async {
     final web = _web;
-    final route = await _webRoute();
-    if (web == null || route == null) throw const GuidedUnavailableException();
-    return route.run(
-      web,
+    final model = await _webModel();
+    if (web == null || model == null) throw const GuidedUnavailableException();
+    return web.search(
+      modelId: model,
       system: guidedWebSearchSystemPrompt,
       text: guidedWebSearchUserText(lookups),
     );
@@ -342,29 +335,27 @@ class GuidedMealService {
   /// or silent, without anyone reading logs. Runs the models side by side, so
   /// the test lasts as long as the slowest wait rather than their sum.
   ///
-  /// With the web search on, the models that search are asked too, with the
+  /// With the web search on, the model that searches is asked too, with the
   /// search tool: a working connection says nothing about the tool.
   Future<List<GuidedProbeResult>> testConnection() async {
     final selection = await _selection();
     final models = _client.modelsFor(selection);
     final web = _web;
-    final route = web != null && await webLookupAvailable()
-        ? await _webRoute()
+    final webModel = web != null && await webLookupAvailable()
+        ? await _webModel()
         : null;
     return Future.wait([
       ...models.map((model) => _probe(selection, model)),
-      if (web != null && route != null)
-        for (final model in route.models)
-          _probeCall(
-            '$model + web',
-            () => route.run(
-              web,
-              system: 'Answer in one short sentence. Use web search.',
-              text: 'How many kcal per 100 g does a raw banana have?',
-              onlyModel: model,
-              timeout: _webProbeTimeout,
-            ),
+      if (web != null && webModel != null)
+        _probeCall(
+          '$webModel + web',
+          () => web.search(
+            modelId: webModel,
+            system: 'Answer in one short sentence. Use web search.',
+            text: 'How many kcal per 100 g does a raw banana have?',
+            timeoutOverride: _webProbeTimeout,
           ),
+        ),
     ]);
   }
 
@@ -441,54 +432,5 @@ class GuidedMealService {
     } catch (_) {
       return result(GuidedProbeOutcome.other);
     }
-  }
-}
-
-/// How a web search is run: through the ChatGPT plan with the model the person
-/// picked there, or on a Gemini key.
-class _WebRoute {
-  final String? _chatGptModel;
-  final String? _geminiKey;
-
-  const _WebRoute.chatGpt(String model)
-    : _chatGptModel = model,
-      _geminiKey = null;
-
-  const _WebRoute.gemini(String key)
-    : _geminiKey = key,
-      _chatGptModel = null;
-
-  bool get isChatGpt => _chatGptModel != null;
-
-  /// The models a connection test asks: the one model of the plan, or both
-  /// Gemini models, each of which can be missing for a different reason.
-  List<String> get models {
-    final model = _chatGptModel;
-    return model != null ? [model] : GuidedWebSearchClient.models;
-  }
-
-  Future<GuidedWebResearch> run(
-    GuidedWebSearchClient client, {
-    required String system,
-    required String text,
-    String? onlyModel,
-    Duration? timeout,
-  }) {
-    final model = _chatGptModel;
-    if (model != null) {
-      return client.searchWithChatGpt(
-        modelId: model,
-        system: system,
-        text: text,
-        timeoutOverride: timeout,
-      );
-    }
-    return client.search(
-      apiKey: _geminiKey!,
-      system: system,
-      text: text,
-      onlyModel: onlyModel,
-      timeoutOverride: timeout,
-    );
   }
 }

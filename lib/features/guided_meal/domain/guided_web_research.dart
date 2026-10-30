@@ -1,8 +1,8 @@
 import 'package:opennutritracker/features/add_meal/domain/meal_interpreter_exception.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_entities.dart';
 
-/// A web page the search leaned on, as Google names it: the title is the
-/// site's own name or domain, the address a redirect Google hands out.
+/// A web page the search cited: the title is the name of its site, the address
+/// the page itself.
 class GuidedWebSource {
   final String title;
   final String url;
@@ -38,7 +38,7 @@ class GuidedWebResearch {
 }
 
 /// Foods looked up per meal. A meal of unknown brand products is rare, and
-/// every food costs one of the 500 searches a day the free tier allows.
+/// every food makes the one search call longer.
 const maxWebLookups = 3;
 
 const maxLookupQueryChars = 120;
@@ -74,54 +74,6 @@ String? cleanLookupQuery(Object? value) {
     return null;
   }
   return query;
-}
-
-/// Reads a `generateContent` reply made with the Google Search tool.
-///
-/// The text is every part that is the model's answer and not its thinking. The
-/// searches and pages come from `groundingMetadata`, which is missing when the
-/// model answered without searching; that is not an error, the answer simply
-/// has no sources.
-///
-/// Raises when there is no answer at all, which is what a reply blocked by the
-/// provider looks like.
-GuidedWebResearch guidedWebResearchFromJson(Object? raw) {
-  final candidates = raw is Map ? raw['candidates'] : null;
-  final candidate =
-      candidates is List && candidates.isNotEmpty && candidates.first is Map
-      ? candidates.first as Map
-      : null;
-  if (candidate == null) {
-    throw const MealInterpreterException(
-      'search reply has no candidate',
-      failure: MealInterpreterFailure.unsupported,
-    );
-  }
-
-  final content = candidate['content'];
-  final parts = content is Map ? content['parts'] : null;
-  final answer = StringBuffer();
-  if (parts is List) {
-    for (final part in parts) {
-      if (part is Map && part['thought'] != true && part['text'] is String) {
-        answer.write(part['text'] as String);
-      }
-    }
-  }
-  final text = answer.toString().trim();
-  if (text.isEmpty) {
-    throw const MealInterpreterException(
-      'search reply has no text',
-      failure: MealInterpreterFailure.unsupported,
-    );
-  }
-
-  final metadata = candidate['groundingMetadata'];
-  return GuidedWebResearch(
-    text: sanitizeWebResearch(text),
-    queries: _queriesFrom(metadata),
-    sources: _sourcesFrom(metadata),
-  );
 }
 
 /// Reads a finished Responses-API reply made with the `web_search` tool, as
@@ -202,40 +154,6 @@ GuidedWebResearch guidedWebResearchFromResponses(Object? response) {
   );
 }
 
-List<String> _queriesFrom(Object? metadata) {
-  final raw = metadata is Map ? metadata['webSearchQueries'] : null;
-  if (raw is! List) return const [];
-  final queries = <String>[];
-  for (final query in raw) {
-    if (query is! String || query.trim().isEmpty) continue;
-    final clean = query.trim();
-    if (!queries.contains(clean)) queries.add(clean);
-    if (queries.length >= maxWebQueries) break;
-  }
-  return queries;
-}
-
-List<GuidedWebSource> _sourcesFrom(Object? metadata) {
-  final raw = metadata is Map ? metadata['groundingChunks'] : null;
-  if (raw is! List) return const [];
-  final sources = <GuidedWebSource>[];
-  final seen = <String>{};
-  for (final chunk in raw) {
-    final web = chunk is Map ? chunk['web'] : null;
-    if (web is! Map) continue;
-    final url = web['uri'];
-    if (url is! String || url.isEmpty) continue;
-    final title = web['title'];
-    final name = title is String && title.trim().isNotEmpty
-        ? title.trim()
-        : (Uri.tryParse(url)?.host ?? url);
-    if (!seen.add(name)) continue;
-    sources.add(GuidedWebSource(title: name, url: url));
-    if (sources.length >= maxWebSources) break;
-  }
-  return sources;
-}
-
 /// The search's answer, trimmed to the cap and with any tag that could close
 /// the block it is sent in removed, so the text cannot step outside the place
 /// the prompt reserves for it.
@@ -253,8 +171,8 @@ String sanitizeWebResearch(String text) {
 /// English, because it is model-facing. The answer is read by the decision
 /// step, not shown to the person, so it stays plain.
 const guidedWebSearchSystemPrompt = '''
-You look up nutrition facts on the web for foods a person ate. Use Google
-Search.
+You look up nutrition facts on the web for foods a person ate. Use web
+search.
 
 For each numbered food, find energy (kcal), protein, carbohydrates and fat per
 100 g. Prefer the producer's own nutrition table or the restaurant's own one;

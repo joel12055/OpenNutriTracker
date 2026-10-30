@@ -198,10 +198,7 @@ Future<void> initLocator() async {
         locator<http.Client>(),
         chatGpt: locator<ChatGptAuth>(),
       ),
-      GuidedWebSearchClient(
-        locator<http.Client>(),
-        chatGpt: locator<ChatGptAuth>(),
-      ),
+      GuidedWebSearchClient(locator<http.Client>(), locator<ChatGptAuth>()),
     ),
   );
   locator.registerLazySingleton<ReadMealPhotoUseCase>(
