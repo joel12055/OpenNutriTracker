@@ -2,11 +2,14 @@ import 'package:http/http.dart' as http;
 import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
 import 'package:opennutritracker/core/utils/ai_model_catalogue.dart';
 import 'package:opennutritracker/core/utils/ai_provider_endpoints.dart';
+import 'package:opennutritracker/core/utils/chatgpt_auth.dart';
 import 'package:opennutritracker/core/utils/plaintext_destination_guard.dart';
 import 'package:opennutritracker/features/add_meal/data/anthropic_meal_items_api.dart';
 import 'package:opennutritracker/features/add_meal/data/openai_meal_items_api.dart';
 import 'package:opennutritracker/features/add_meal/data/openai_compatible_meal_items_api.dart';
 import 'package:opennutritracker/features/add_meal/domain/meal_items_api.dart';
+import 'package:opennutritracker/features/guided_meal/data/guided_tool_client.dart';
+import 'package:opennutritracker/features/guided_meal/data/guided_tool_meal_items_api.dart';
 
 /// Turns a stored selection into the client that will carry it.
 ///
@@ -66,6 +69,7 @@ MealItemsApi mealItemsApiFor(
   http.Client client,
   AiSelection selection, {
   Duration? timeout,
+  ChatGptTokenSource? chatGpt,
 }) {
   final model = AiModelCatalogue.resolve(selection.provider, selection.modelId);
   final modelId = model?.id ?? selection.modelId;
@@ -101,6 +105,13 @@ MealItemsApi mealItemsApiFor(
       key,
       model: modelId,
       timeout: timeout ?? OpenAiMealItemsApi.defaultTimeout,
+    ),
+    // The person's ChatGPT plan, through the guided flow's client, which
+    // speaks the streaming route that plan is served on.
+    AiProvider.chatgpt => GuidedToolMealItemsApi(
+      GuidedToolClient(client, chatGpt: chatGpt),
+      selection,
+      timeout: timeout,
     ),
     // Google's OpenAI-compatible route: no broker to pin and nobody in
     // between to name. `required` rather than a named function, as for a

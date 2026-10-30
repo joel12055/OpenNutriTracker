@@ -6,10 +6,14 @@ import 'package:opennutritracker/core/presentation/ai_assist_summary.dart';
 import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
 import 'package:opennutritracker/core/utils/ai_model_catalogue.dart';
 import 'package:opennutritracker/core/utils/ai_model_list_api.dart';
+import 'package:opennutritracker/core/utils/chatgpt_auth.dart';
+import 'package:opennutritracker/core/utils/locator.dart';
 import 'package:opennutritracker/core/utils/plaintext_destination_guard.dart';
 import 'package:opennutritracker/features/add_meal/domain/usecase/probe_ai_endpoint_usecase.dart';
 import 'package:opennutritracker/features/add_meal/domain/usecase/run_ai_endpoint_probe_usecase.dart';
 import 'package:opennutritracker/features/settings/presentation/widgets/ai_consent_screen.dart';
+import 'package:opennutritracker/features/settings/presentation/widgets/chatgpt_sign_in_section.dart';
+import 'package:opennutritracker/features/settings/presentation/widgets/reasoning_level_selector.dart';
 import 'package:opennutritracker/generated/l10n.dart';
 
 /// Where the user chooses a provider, supplies a key for it, picks a model,
@@ -884,6 +888,7 @@ class _AiAssistDialogState extends State<AiAssistDialog> {
     AiProvider.openrouter => 'OpenRouter',
     AiProvider.openai => 'OpenAI',
     AiProvider.gemini => 'Google Gemini',
+    AiProvider.chatgpt => 'ChatGPT',
     // The only one that is not a brand, so the only one that is localized.
     // **Never "local"**: that word is simultaneously what the ecosystem calls
     // Ollama and what a user reads as *on my phone* — the claim reserved for
@@ -1032,7 +1037,24 @@ class _AiAssistDialogState extends State<AiAssistDialog> {
                     // its key stays optional afterwards — so the field has to
                     // remain reachable there rather than being replaced by a
                     // mask over an empty slot.
-                    if (_hasKey)
+                    if (_provider == AiProvider.chatgpt)
+                      // No key to paste: signing in and choosing a model is the
+                      // whole credential. Absent in tests that never register
+                      // the sign-in, which then show nothing here.
+                      if (locator.isRegistered<ChatGptAuth>())
+                        ChatGptSignInSection(
+                          storage: widget.storage,
+                          auth: locator<ChatGptAuth>(),
+                          ensureAgreed: () =>
+                              _agreedBeforeAnythingIsStored(AiProvider.chatgpt),
+                          onChanged: () {
+                            _changed = true;
+                            _load();
+                          },
+                        )
+                      else
+                        const SizedBox.shrink()
+                    else if (_hasKey)
                       Row(
                         children: [
                           const Icon(Icons.key_rounded, size: 18),
@@ -1109,6 +1131,13 @@ class _AiAssistDialogState extends State<AiAssistDialog> {
                     // to send to; picking a model is the step after deciding
                     // you can talk to them at all.
                     _buildModelSection(context, s, theme),
+                    // Only the providers that take a thinking level; for the
+                    // others the choice would change nothing.
+                    if (_provider == AiProvider.gemini ||
+                        _provider == AiProvider.chatgpt) ...[
+                      const SizedBox(height: 16),
+                      ReasoningLevelSelector(storage: widget.storage),
+                    ],
                     // Directly under the pair it is a fact about. A stored
                     // verdict describes `(endpoint, model)` and is discarded
                     // when either changes, so reading it anywhere further from
@@ -1446,6 +1475,9 @@ class _AiAssistDialogState extends State<AiAssistDialog> {
   /// below is reachable in production for the first time, and the grouped
   /// line is now the special case rather than the rule.
   Widget _buildModelSection(BuildContext context, S s, ThemeData theme) {
+    // ChatGPT's models come from OpenAI after sign-in and are chosen in its
+    // own section, so neither the curated rows nor a server's model field.
+    if (_provider == AiProvider.chatgpt) return const SizedBox.shrink();
     final models = AiModelCatalogue.forProvider(_provider);
     if (models.isEmpty) {
       // No curated list, so nothing measured to say about what the user

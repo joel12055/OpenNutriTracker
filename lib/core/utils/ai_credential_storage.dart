@@ -1,4 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:opennutritracker/core/utils/chatgpt_session_store.dart';
 import 'package:opennutritracker/core/utils/secure_app_storage_provider.dart';
 import 'package:synchronized/synchronized.dart';
 
@@ -14,6 +15,12 @@ enum AiProvider {
   /// Google's Gemini API, reached with a key from Google AI Studio. Its free
   /// tier needs no payment method, which is why it is offered at all.
   gemini,
+
+  /// The person's own ChatGPT plan, reached through "Sign in with ChatGPT":
+  /// no API key exists. The key slot holds [AiCredentialStorage.chatGptSessionMarker]
+  /// so that everything asking "is there a credential" gets the right answer,
+  /// and the tokens themselves live in [ChatGptSessionStore].
+  chatgpt,
 
   /// A server the user runs — Ollama, LM Studio, llama.cpp, vLLM — reached at
   /// an address they supply.
@@ -281,6 +288,7 @@ class AiCredentialStorage {
 
   static const _enabledTag = 'AiAssistEnabledTag';
   static const _termsAcceptedTag = 'AiTermsAcceptedTag';
+  static const _reasoningTag = 'AiReasoningLevelTag';
   static const _providerTag = 'AiProviderTag';
   static const _modelTag = 'AiModelTag';
 
@@ -308,6 +316,19 @@ class AiCredentialStorage {
 
   AiCredentialStorage([FlutterSecureStorage? storage])
     : _storage = storage ?? SecureAppStorageProvider.secureAppStorage;
+
+  /// What the ChatGPT provider's key slot holds. Not a secret: it only marks
+  /// "signed in", so no credential-shaped value is ever stored there.
+  static const chatGptSessionMarker = 'chatgpt-session';
+
+  Future<void> _clearChatGptSession({bool includeHostId = false}) async {
+    for (final tag in ChatGptSessionStore.sessionTags) {
+      await _storage.delete(key: tag);
+    }
+    if (includeHostId) {
+      await _storage.delete(key: ChatGptSessionStore.hostIdTag);
+    }
+  }
 
   /// Which provider the AI features currently use, or **null when the stored
   /// name is one this build does not know** — see [AiProvider.fromTag].
@@ -609,6 +630,9 @@ class AiCredentialStorage {
     AiProvider.openrouter ||
     AiProvider.openai ||
     AiProvider.gemini => apiKey != null,
+    // Signed in **and** a model chosen: there is no curated list to fall back
+    // to, so without an id the request builder would have nothing to name.
+    AiProvider.chatgpt => apiKey != null && modelId != null,
     // **And the model**, which is where #738's "the model is part of what
     // configured means here" is finally enforced rather than asserted. The
     // three hosted providers fall back to a curated default; this one has no
@@ -1031,6 +1055,9 @@ class AiCredentialStorage {
       await _storage.delete(key: _modelSlotTag(target));
       await _storage.delete(key: _probeSlotTag(target));
       await _retireLegacyTagFor(target);
+      // Removing ChatGPT is also signing out: the refresh token would
+      // otherwise outlive the only thing that says it is in use.
+      if (target == AiProvider.chatgpt) await _clearChatGptSession();
 
       // Only once nothing is left: with four slots, clearing one credential
       // is often "I am dropping this provider", not "I am done with the
@@ -1074,10 +1101,12 @@ class AiCredentialStorage {
       await _storage.delete(key: _modelSlotTag(provider));
       await _storage.delete(key: _probeSlotTag(provider));
     }
+    await _clearChatGptSession(includeHostId: true);
     await _storage.delete(key: _legacyApiKeyTag);
     await _storage.delete(key: _providerTag);
     await _storage.delete(key: _enabledTag);
     await _storage.delete(key: _termsAcceptedTag);
+    await _storage.delete(key: _reasoningTag);
   });
 
   /// The legacy tag is the Anthropic slot under an older name, so it is
@@ -1157,6 +1186,24 @@ class AiCredentialStorage {
       key: _termsAcceptedTag,
       value: accepted ? 'true' : 'false',
     );
+  }
+
+  /// How much a thinking model may deliberate in the guided flow, as the
+  /// person chose it — `low`, `medium` or `high` — or null for "automatic",
+  /// where the flow picks a level per step. Not a secret; it lives here
+  /// because this store is where every AI setting is kept and wiped.
+  Future<String?> readReasoningLevel() async {
+    final value = await _storage.read(key: _reasoningTag);
+    return const {'low', 'medium', 'high'}.contains(value) ? value : null;
+  }
+
+  /// Null (or anything but the three levels) goes back to automatic.
+  Future<void> writeReasoningLevel(String? level) async {
+    if (const {'low', 'medium', 'high'}.contains(level)) {
+      await _storage.write(key: _reasoningTag, value: level);
+    } else {
+      await _storage.delete(key: _reasoningTag);
+    }
   }
 
   /// Whether the user currently wants the key used. False whenever the

@@ -41,7 +41,8 @@ enum MealPhotoFormat {
     AiProvider.anthropic ||
     AiProvider.openrouter ||
     AiProvider.openai ||
-    AiProvider.gemini => webp,
+    AiProvider.gemini ||
+    AiProvider.chatgpt => webp,
     AiProvider.ownServer => jpeg,
   };
 }

@@ -155,6 +155,11 @@ class _BulkAddScreenState extends State<BulkAddScreen> {
     if (provider == AiProvider.ownServer) {
       return await _ownServerDestination(storage);
     }
+    // No curated model list to read a vendor from: the person's ChatGPT plan
+    // is OpenAI, which is the one fact the sheet needs to say.
+    if (provider == AiProvider.chatgpt) {
+      return (provider: provider, name: 'OpenAI');
+    }
     final model = AiModelCatalogue.resolve(
       provider,
       await storage.readModel(provider: provider),
@@ -1353,6 +1358,7 @@ class _BulkAddScreenState extends State<BulkAddScreen> {
       // string is flat where OpenRouter's is parameterised.
       AiProvider.openai => S.of(context).bulkAddPhotoDisclosureOpenAI,
       AiProvider.gemini => S.of(context).bulkAddPhotoDisclosureGemini,
+      AiProvider.chatgpt => S.of(context).bulkAddPhotoDisclosureChatGpt,
       // The address, and nothing beyond it. Not "no third party receives it",
       // however tempting: the app cannot tell a local runtime from a
       // self-hosted proxy forwarding to OpenAI, and #732 ruled those out of

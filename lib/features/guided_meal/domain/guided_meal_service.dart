@@ -81,11 +81,24 @@ class GuidedMealService {
           : AiCredentialStorage.displayHost(endpoint);
       return host == null ? null : GuidedDestination(provider, host);
     }
+    // No curated list to take a vendor from: a ChatGPT plan is OpenAI.
+    if (provider == AiProvider.chatgpt) {
+      return GuidedDestination(provider, 'OpenAI');
+    }
     final model = AiModelCatalogue.resolve(
       provider,
       await _credentials.readModel(provider: provider),
     );
     return model == null ? null : GuidedDestination(provider, model.servedBy);
+  }
+
+  /// The level to ask for: the person's own choice if they made one,
+  /// otherwise [automatic], which the step itself decides.
+  Future<({String effort, bool chosen})> _reasoning(String automatic) async {
+    final level = await _credentials.readReasoningLevel();
+    return level == null
+        ? (effort: automatic, chosen: false)
+        : (effort: level, chosen: true);
   }
 
   Future<AiSelection> _selection() async {
@@ -102,6 +115,7 @@ class GuidedMealService {
     String? localeCode,
   }) async {
     final selection = await _selection();
+    final reasoning = await _reasoning('medium');
     final reply = await _client.call(
       selection,
       GuidedToolRequest(
@@ -112,7 +126,8 @@ class GuidedMealService {
         toolDescription: askQuestionsToolDescription,
         schema: askQuestionsSchema,
         // Choosing the right questions is where a careless read costs most.
-        reasoningEffort: 'medium',
+        reasoningEffort: reasoning.effort,
+        reasoningChosen: reasoning.chosen,
       ),
     );
     return guidedAnalysisFromJson(reply);
@@ -128,6 +143,7 @@ class GuidedMealService {
     String? localeCode,
   }) async {
     final selection = await _selection();
+    final reasoning = await _reasoning('high');
     final reply = await _client.call(
       selection,
       GuidedToolRequest(
@@ -145,7 +161,8 @@ class GuidedMealService {
         schema: estimateMealSchema,
         // Turning answers into weights and energy is the step whose result
         // is logged, so it gets the most thinking.
-        reasoningEffort: 'high',
+        reasoningEffort: reasoning.effort,
+        reasoningChosen: reasoning.chosen,
       ),
     );
     return guidedEstimateFromJson(reply);
@@ -169,6 +186,7 @@ class GuidedMealService {
     String? localeCode,
   }) async {
     final selection = await _selection();
+    final reasoning = await _reasoning('high');
     final reply = await _client.call(
       selection,
       GuidedToolRequest(
@@ -187,7 +205,8 @@ class GuidedMealService {
         toolDescription: decideMealToolDescription,
         schema: decideMealSchema,
         // The last word on what gets logged, so the most thinking.
-        reasoningEffort: 'high',
+        reasoningEffort: reasoning.effort,
+        reasoningChosen: reasoning.chosen,
       ),
     );
     return guidedDecisionFromJson(reply);

@@ -252,6 +252,7 @@ class _GuidedMealViewState extends State<_GuidedMealView> {
         ),
         AiProvider.openai => s.bulkAddPhotoDisclosureOpenAI,
         AiProvider.gemini => s.bulkAddPhotoDisclosureGemini,
+        AiProvider.chatgpt => s.bulkAddPhotoDisclosureChatGpt,
         AiProvider.ownServer => s.bulkAddPhotoDisclosureOwnServer(
           destination.name,
         ),

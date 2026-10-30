@@ -79,6 +79,8 @@ import 'package:opennutritracker/core/utils/off_micronutrient_repair.dart';
 import 'package:opennutritracker/core/utils/tracked_day_reconciler.dart';
 import 'package:opennutritracker/core/utils/env.dart';
 import 'package:http/http.dart' as http;
+import 'package:opennutritracker/core/utils/chatgpt_auth.dart';
+import 'package:opennutritracker/core/utils/chatgpt_session_store.dart';
 import 'package:opennutritracker/features/guided_meal/data/guided_tool_client.dart';
 import 'package:opennutritracker/features/guided_meal/domain/guided_meal_service.dart';
 import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
@@ -173,21 +175,40 @@ Future<void> initLocator() async {
   locator.registerLazySingleton<ReadMealTextUseCase>(
     () => ReadMealTextUseCase(
       locator<AiCredentialStorage>(),
-      (selection) =>
-          ModelMealTextInterpreter(mealItemsApiFor(locator(), selection)),
+      (selection) => ModelMealTextInterpreter(
+        mealItemsApiFor(
+          locator(),
+          selection,
+          chatGpt: locator<ChatGptAuth>(),
+        ),
+      ),
+    ),
+  );
+  locator.registerLazySingleton<ChatGptAuth>(
+    () => ChatGptAuth(
+      locator<http.Client>(),
+      ChatGptSessionStore(SecureAppStorageProvider.secureAppStorage),
     ),
   );
   locator.registerLazySingleton<GuidedMealService>(
     () => GuidedMealService(
       locator<AiCredentialStorage>(),
-      GuidedToolClient(locator<http.Client>()),
+      GuidedToolClient(
+        locator<http.Client>(),
+        chatGpt: locator<ChatGptAuth>(),
+      ),
     ),
   );
   locator.registerLazySingleton<ReadMealPhotoUseCase>(
     () => ReadMealPhotoUseCase(
       locator<AiCredentialStorage>(),
-      (selection) =>
-          ModelMealPhotoInterpreter(mealItemsApiFor(locator(), selection)),
+      (selection) => ModelMealPhotoInterpreter(
+        mealItemsApiFor(
+          locator(),
+          selection,
+          chatGpt: locator<ChatGptAuth>(),
+        ),
+      ),
     ),
   );
   // A singleton because it is the thing that outlives the settings dialog:

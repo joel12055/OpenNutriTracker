@@ -216,6 +216,9 @@ abstract final class AiModelCatalogue {
     AiProvider.openrouter => openrouter,
     AiProvider.openai => openai,
     AiProvider.gemini => gemini,
+    // No curated list: the models a ChatGPT plan offers are asked of OpenAI
+    // after sign-in and one is stored, like a server the user runs.
+    AiProvider.chatgpt => const [],
     AiProvider.ownServer => const [],
   };
 

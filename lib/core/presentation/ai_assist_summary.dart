@@ -38,6 +38,7 @@ String? aiAssistSubtitle(
       AiProvider.openrouter => 'OpenRouter',
       AiProvider.openai => 'OpenAI',
       AiProvider.gemini => 'Google Gemini',
+      AiProvider.chatgpt => 'ChatGPT',
       // No brand to print. #736: the row names where the data goes, and for a
       // server the user runs that is the machine they pointed it at — host
       // and port, not the stored URL. That string carries the chat route,
@@ -78,6 +79,7 @@ String aiDisclosureFor(
   AiProvider.openrouter => s.aiAssistDisclosureOpenRouter,
   AiProvider.openai => s.aiAssistDisclosureOpenAI,
   AiProvider.gemini => s.aiAssistDisclosureGemini,
+  AiProvider.chatgpt => s.aiAssistDisclosureChatGpt,
   AiProvider.ownServer => _ownServerDisclosure(s, typedEndpoint),
 };
 

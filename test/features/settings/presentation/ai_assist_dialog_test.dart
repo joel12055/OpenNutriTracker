@@ -865,7 +865,10 @@ void main() {
       // The dialog is taller than a phone, and the model field sits below
       // the address. With the address still being edited, OK refused below
       // the fold and looked like it did nothing.
-      tester.view.physicalSize = const Size(720, 1280);
+      //
+      // 1376 rather than 1280 tall: the provider list gained a row, and at
+      // the old height the caret handle of the address field sat over OK.
+      tester.view.physicalSize = const Size(720, 1376);
       tester.view.devicePixelRatio = 2;
       addTearDown(tester.view.reset);
 
@@ -1940,9 +1943,16 @@ void main() {
         // provider check alone cannot see: by the time this request returns,
         // the provider it was started for is selected again. What makes it
         // stale is the reload in between, not who is on screen.
+        // Scrolled to before each tap: committing the address scrolled the
+        // dialog down to its field, and with one more provider row above it
+        // the radios are no longer all in view.
+        await tester.ensureVisible(find.text('Anthropic'));
         await tester.tap(find.text('Anthropic'));
         await tester.pump();
         await tester.pump();
+        await tester.ensureVisible(
+          find.text(l10nEn.aiAssistProviderOwnServerLabel),
+        );
         await tester.tap(find.text(l10nEn.aiAssistProviderOwnServerLabel));
         await tester.pump();
         await tester.pump();

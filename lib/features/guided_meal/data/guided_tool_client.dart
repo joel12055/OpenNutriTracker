@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import 'package:opennutritracker/core/utils/ai_credential_storage.dart';
 import 'package:opennutritracker/core/utils/ai_model_catalogue.dart';
 import 'package:opennutritracker/core/utils/ai_provider_endpoints.dart';
+import 'package:opennutritracker/core/utils/chatgpt_auth.dart';
 import 'package:opennutritracker/core/utils/plaintext_destination_guard.dart';
 import 'package:opennutritracker/features/add_meal/domain/meal_photo_interpreter.dart';
 
@@ -31,6 +32,12 @@ class GuidedToolRequest {
   /// answer is worth the wait.
   final String reasoningEffort;
 
+  /// The person picked [reasoningEffort] themselves, rather than it being the
+  /// flow's own default. Gemini always gets a level; the ChatGPT plan route is
+  /// only sent one when it was asked for, because that route is documented to
+  /// need nothing beyond `store` and `stream`.
+  final bool reasoningChosen;
+
   const GuidedToolRequest({
     required this.system,
     required this.text,
@@ -41,6 +48,7 @@ class GuidedToolRequest {
     this.maxTokens = 2048,
     this.timeout,
     this.reasoningEffort = 'low',
+    this.reasoningChosen = false,
   });
 }
 
@@ -95,10 +103,16 @@ class GuidedToolClient {
   /// do not wait for it.
   final Duration _retryDelay;
 
+  /// Where the ChatGPT provider gets its bearer token. Null where nobody can
+  /// be signed in, which makes that provider fail as a rejected credential.
+  final ChatGptTokenSource? _chatGptTokens;
+
   GuidedToolClient(
     this._client, {
     Duration retryDelay = const Duration(seconds: 2),
-  }) : _retryDelay = retryDelay;
+    ChatGptTokenSource? chatGpt,
+  }) : _retryDelay = retryDelay,
+       _chatGptTokens = chatGpt;
 
   /// The models this provider would be asked, in the order they are tried.
   List<String> modelsFor(AiSelection selection) {
@@ -172,6 +186,7 @@ class GuidedToolClient {
     final wire = switch (selection.provider) {
       AiProvider.anthropic => _anthropic(selection, modelId, request),
       AiProvider.openai => _openAi(selection, modelId, request),
+      AiProvider.chatgpt => _chatGpt(modelId, request),
       AiProvider.openrouter => _chat(
         client: _client,
         uri: Uri.parse(_openRouterEndpoint),
@@ -341,6 +356,211 @@ class GuidedToolClient {
       }
     }
     throw _noToolCall();
+  }
+
+  /// The person's ChatGPT plan: the Responses API with the plan's bearer
+  /// token, which that route serves only as a stream of events.
+  ///
+  /// No `max_output_tokens` and no reasoning setting: the route is documented
+  /// to need `store: false` and `stream: true` and nothing more, and a field
+  /// it does not know is a request refused for a reason the person cannot act
+  /// on.
+  Future<Map<String, dynamic>> _chatGpt(
+    String modelId,
+    GuidedToolRequest request,
+  ) async {
+    final tokens = _chatGptTokens;
+    if (tokens == null) {
+      throw const MealInterpreterException(
+        'no ChatGPT sign-in available',
+        failure: MealInterpreterFailure.auth,
+      );
+    }
+    final photo = request.photo;
+    final body = jsonEncode({
+      'model': modelId,
+      'instructions': request.system,
+      'input': [
+        {
+          'role': 'user',
+          'content': [
+            if (photo != null)
+              {
+                'type': 'input_image',
+                'image_url':
+                    'data:${photo.mediaType};base64,${base64Encode(photo.bytes)}',
+              },
+            {'type': 'input_text', 'text': request.text},
+          ],
+        },
+      ],
+      'tools': [
+        {
+          'type': 'function',
+          'name': request.toolName,
+          'description': request.toolDescription,
+          'parameters': request.schema,
+          'strict': false,
+        },
+      ],
+      'tool_choice': {'type': 'function', 'name': request.toolName},
+      'store': false,
+      'stream': true,
+      if (request.reasoningChosen)
+        'reasoning': {'effort': request.reasoningEffort},
+    });
+
+    for (var attempt = 0; ; attempt++) {
+      final String token;
+      try {
+        token = await tokens.accessToken(forceRefresh: attempt > 0);
+      } on ChatGptAuthException {
+        throw const MealInterpreterException(
+          'ChatGPT sign-in is no longer valid',
+          failure: MealInterpreterFailure.auth,
+        );
+      }
+      try {
+        return await _streamResponses(token, body, request);
+      } on MealInterpreterException catch (e) {
+        // A token the server calls stale is replaced once and tried again.
+        if (e.statusCode == 401 && attempt == 0) continue;
+        rethrow;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _streamResponses(
+    String token,
+    String body,
+    GuidedToolRequest request,
+  ) async {
+    final timeout = request.timeout ?? hostedTimeout;
+    final stopwatch = Stopwatch()..start();
+    final http.StreamedResponse response;
+    try {
+      final httpRequest = http.Request('POST', Uri.parse(_openAiEndpoint))
+        ..headers.addAll({
+          'content-type': 'application/json',
+          'accept': 'text/event-stream',
+          'authorization': 'Bearer $token',
+        })
+        ..body = body;
+      response = await _client.send(httpRequest).timeout(timeout);
+    } on TimeoutException {
+      throw const MealInterpreterException(
+        'request timed out',
+        failure: MealInterpreterFailure.timeout,
+      );
+    } catch (_) {
+      // Not logged: the error can carry the request, and it carries the photo.
+      throw const MealInterpreterException('request failed');
+    }
+
+    if (response.statusCode != 200) {
+      final text = await response.stream.bytesToString().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => '',
+      );
+      _log.warning(
+        'Guided call failed with ${response.statusCode}'
+        '${_providerMessage(text)}',
+      );
+      throw MealInterpreterException(
+        'provider returned ${response.statusCode}',
+        failure: _failureFor(response.statusCode, text),
+        statusCode: response.statusCode,
+      );
+    }
+
+    final arguments = await _readEvents(response.stream, request.toolName)
+        .timeout(
+          timeout,
+          onTimeout: () => throw const MealInterpreterException(
+            'request timed out',
+            failure: MealInterpreterFailure.timeout,
+          ),
+        );
+    _log.info(
+      'Guided call to api.openai.com (stream) finished in '
+      '${stopwatch.elapsedMilliseconds} ms',
+    );
+    return _decodeArguments(arguments);
+  }
+
+  /// Reads server-sent events until the response completes and returns the
+  /// arguments of the tool call. Only `response.completed` counts as success;
+  /// a stream that stops before it, or ends in `response.failed`, does not.
+  static Future<String> _readEvents(
+    Stream<List<int>> bytes,
+    String toolName,
+  ) async {
+    String? arguments;
+    await for (final line
+        in bytes.transform(utf8.decoder).transform(const LineSplitter())) {
+      if (!line.startsWith('data:')) continue;
+      final payload = line.substring(5).trim();
+      if (payload.isEmpty || payload == '[DONE]') continue;
+      final Object? event;
+      try {
+        event = jsonDecode(payload);
+      } catch (_) {
+        continue;
+      }
+      if (event is! Map) continue;
+
+      switch (event['type']) {
+        case 'response.output_item.done':
+          final item = event['item'];
+          if (item is Map &&
+              item['type'] == 'function_call' &&
+              item['name'] == toolName &&
+              item['arguments'] is String) {
+            arguments = item['arguments'] as String;
+          }
+        case 'response.completed':
+          arguments ??= _argumentsFromOutput(event['response'], toolName);
+          if (arguments == null) throw _noToolCall();
+          return arguments;
+        case 'response.failed' || 'error':
+          throw _streamFailure(event);
+        case 'response.incomplete':
+          throw const MealInterpreterException('response incomplete');
+      }
+    }
+    throw const MealInterpreterException('stream ended before completion');
+  }
+
+  static String? _argumentsFromOutput(Object? response, String toolName) {
+    final output = response is Map ? response['output'] : null;
+    if (output is! List) return null;
+    for (final entry in output) {
+      if (entry is Map &&
+          entry['type'] == 'function_call' &&
+          entry['name'] == toolName &&
+          entry['arguments'] is String) {
+        return entry['arguments'] as String;
+      }
+    }
+    return null;
+  }
+
+  /// An error that arrives inside the stream, after the 200. The plan's
+  /// allowance running out is the one the person can do something about.
+  static MealInterpreterException _streamFailure(Map event) {
+    final response = event['response'];
+    final error =
+        (response is Map ? response['error'] : null) ?? event['error'];
+    final code = error is Map && error['code'] is String
+        ? error['code'] as String
+        : '';
+    final spent = code.contains('usage_limit');
+    return MealInterpreterException(
+      'stream failed: $code',
+      failure: spent
+          ? MealInterpreterFailure.billing
+          : MealInterpreterFailure.transient,
+    );
   }
 
   /// OpenRouter and servers the user runs: the OpenAI chat-completions shape.

@@ -2442,6 +2442,51 @@ void main() {
       expect(find.bySemanticsIdentifier('bulk-add-photo'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'a signed-in ChatGPT plan, which has no curated model list, still '
+      'offers the camera and the guided flow',
+      (tester) async {
+        // The destination used to be read off the curated list, and ChatGPT's
+        // is empty by design — so a person who had just signed in found both
+        // actions gone.
+        await _registerWithFailingReader(
+          {
+            'toast': [_meal('Toast')],
+          },
+          const MealInterpreterException(
+            'rejected',
+            failure: MealInterpreterFailure.auth,
+          ),
+        );
+        getIt.unregister<AiCredentialStorage>();
+        final storage = AiCredentialStorage(_MapStorage(const {}));
+        getIt.registerLazySingleton<AiCredentialStorage>(() => storage);
+        await storage.setTermsAccepted(true);
+        await storage.writeModel('gpt-a', provider: AiProvider.chatgpt);
+        await storage.writeApiKey(
+          AiCredentialStorage.chatGptSessionMarker,
+          provider: AiProvider.chatgpt,
+        );
+        await storage.setActiveProvider(AiProvider.chatgpt);
+
+        await tester.pumpWidget(_app(pushed: <RouteSettings>[]));
+        await tester.pumpAndSettle();
+        tester.state<NavigatorState>(find.byType(Navigator)).pushNamed('/bulk');
+        await tester.pumpAndSettle();
+
+        expect(
+          find.bySemanticsIdentifier('bulk-add-photo'),
+          findsOneWidget,
+          reason: 'camera',
+        );
+        expect(
+          find.bySemanticsIdentifier('bulk-add-guided'),
+          findsOneWidget,
+          reason: 'guided',
+        );
+      },
+    );
   });
 
   group('an own-server probe that lands after the user is back (#1089)', () {
